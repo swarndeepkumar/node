@@ -1,15 +1,14 @@
 'use strict';
-var common = require('../common');
-var assert = require('assert');
-var Stream = require('stream');
-var repl = require('repl');
+require('../common');
+const assert = require('assert');
+const Stream = require('stream');
+const repl = require('repl');
 
-common.globalCheck = false;
-
-var tests = [
+const tests = [
   testSloppyMode,
   testStrictMode,
-  testAutoMode
+  testAutoMode,
+  testStrictModeTerminal,
 ];
 
 tests.forEach(function(test) {
@@ -17,58 +16,61 @@ tests.forEach(function(test) {
 });
 
 function testSloppyMode() {
-  var cli = initRepl(repl.REPL_MODE_SLOPPY);
+  const cli = initRepl(repl.REPL_MODE_SLOPPY);
 
-  cli.input.emit('data', `
-    x = 3
-  `.trim() + '\n');
-  assert.equal(cli.output.accumulator.join(''), '> 3\n> ');
+  cli.input.emit('data', 'x = 3\n');
+  assert.strictEqual(cli.output.accumulator.join(''), '> 3\n> ');
   cli.output.accumulator.length = 0;
 
-  cli.input.emit('data', `
-    let y = 3
-  `.trim() + '\n');
-  assert.ok(/SyntaxError: Block-scoped/.test(
-      cli.output.accumulator.join('')));
+  cli.input.emit('data', 'let y = 3\n');
+  assert.strictEqual(cli.output.accumulator.join(''), 'undefined\n> ');
 }
 
 function testStrictMode() {
-  var cli = initRepl(repl.REPL_MODE_STRICT);
+  const cli = initRepl(repl.REPL_MODE_STRICT);
 
-  cli.input.emit('data', `
-    x = 3
-  `.trim() + '\n');
+  cli.input.emit('data', 'x = 3\n');
   assert.ok(/ReferenceError: x is not defined/.test(
-      cli.output.accumulator.join('')));
+    cli.output.accumulator.join('')));
   cli.output.accumulator.length = 0;
 
-  cli.input.emit('data', `
-    let y = 3
-  `.trim() + '\n');
-  assert.equal(cli.output.accumulator.join(''), 'undefined\n> ');
+  cli.input.emit('data', 'let y = 3\n');
+  assert.strictEqual(cli.output.accumulator.join(''), 'undefined\n> ');
+}
+
+function testStrictModeTerminal() {
+  if (!process.features.inspector) {
+    console.warn('Test skipped: V8 inspector is disabled');
+    return;
+  }
+  // Verify that ReferenceErrors are reported in strict mode previews.
+  const cli = initRepl(repl.REPL_MODE_STRICT, {
+    terminal: true
+  });
+
+  cli.input.emit('data', 'xyz ');
+  assert.ok(
+    cli.output.accumulator.includes('\n// ReferenceError: xyz is not defined')
+  );
 }
 
 function testAutoMode() {
-  var cli = initRepl(repl.REPL_MODE_MAGIC);
+  const cli = initRepl(repl.REPL_MODE_MAGIC);
 
-  cli.input.emit('data', `
-    x = 3
-  `.trim() + '\n');
-  assert.equal(cli.output.accumulator.join(''), '> 3\n> ');
+  cli.input.emit('data', 'x = 3\n');
+  assert.strictEqual(cli.output.accumulator.join(''), '> 3\n> ');
   cli.output.accumulator.length = 0;
 
-  cli.input.emit('data', `
-    let y = 3
-  `.trim() + '\n');
-  assert.equal(cli.output.accumulator.join(''), 'undefined\n> ');
+  cli.input.emit('data', 'let y = 3\n');
+  assert.strictEqual(cli.output.accumulator.join(''), 'undefined\n> ');
 }
 
-function initRepl(mode) {
-  var input = new Stream();
-  input.write = input.pause = input.resume = function() {};
+function initRepl(mode, options) {
+  const input = new Stream();
+  input.write = input.pause = input.resume = () => {};
   input.readable = true;
 
-  var output = new Stream();
+  const output = new Stream();
   output.write = output.pause = output.resume = function(buf) {
     output.accumulator.push(buf);
   };
@@ -80,6 +82,7 @@ function initRepl(mode) {
     output: output,
     useColors: false,
     terminal: false,
-    replMode: mode
+    replMode: mode,
+    ...options
   });
 }

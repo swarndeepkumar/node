@@ -144,6 +144,7 @@
   var object = {
     method() { return 42; }
   };
+  %PrepareFunctionForOptimization(object.method);
   assertEquals(42, object.method());
   assertEquals(42, object.method());
   %OptimizeFunctionOnNextCall(object.method);
@@ -239,16 +240,14 @@ function assertIteratorResult(value, done, result) {
 })();
 
 
-(function TestGeneratorConstructable() {
+(function TestGeneratorNotConstructable() {
   var object = {
     *method() {
       yield 1;
     }
   };
 
-  var g = new object.method();
-  assertIteratorResult(1, false, g.next());
-  assertIteratorResult(undefined, true, g.next());
+  assertThrows(()=>new object.method());
 })();
 
 

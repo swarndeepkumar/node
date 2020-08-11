@@ -2,10 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// TODO(jochen): Remove this after the setting is turned on globally.
-#define V8_IMMINENT_DEPRECATION_WARNINGS
-
-#include "src/basic-block-profiler.h"
+#include "src/diagnostics/basic-block-profiler.h"
+#include "src/objects/objects-inl.h"
 #include "test/cctest/cctest.h"
 #include "test/cctest/compiler/codegen-tester.h"
 
@@ -13,20 +11,18 @@ namespace v8 {
 namespace internal {
 namespace compiler {
 
-typedef RawMachineAssembler::Label MLabel;
-
 class BasicBlockProfilerTest : public RawMachineAssemblerTester<int32_t> {
  public:
-  BasicBlockProfilerTest() : RawMachineAssemblerTester<int32_t>(kMachInt32) {
+  BasicBlockProfilerTest()
+      : RawMachineAssemblerTester<int32_t>(MachineType::Int32()) {
     FLAG_turbo_profiling = true;
   }
 
-  void ResetCounts() { isolate()->basic_block_profiler()->ResetCounts(); }
+  void ResetCounts() { BasicBlockProfiler::Get()->ResetCounts(); }
 
   void Expect(size_t size, uint32_t* expected) {
-    CHECK(isolate()->basic_block_profiler());
     const BasicBlockProfiler::DataList* l =
-        isolate()->basic_block_profiler()->data_list();
+        BasicBlockProfiler::Get()->data_list();
     CHECK_NE(0, static_cast<int>(l->size()));
     const BasicBlockProfiler::Data* data = l->back();
     CHECK_EQ(static_cast<int>(size), static_cast<int>(data->n_blocks()));
@@ -41,7 +37,7 @@ class BasicBlockProfilerTest : public RawMachineAssemblerTester<int32_t> {
 TEST(ProfileDiamond) {
   BasicBlockProfilerTest m;
 
-  MLabel blocka, blockb, end;
+  RawMachineLabel blocka, blockb, end;
   m.Branch(m.Parameter(0), &blocka, &blockb);
   m.Bind(&blocka);
   m.Goto(&end);
@@ -52,13 +48,13 @@ TEST(ProfileDiamond) {
 
   m.GenerateCode();
   {
-    uint32_t expected[] = {0, 0, 0, 0};
+    uint32_t expected[] = {0, 0, 0, 0, 0, 0};
     m.Expect(arraysize(expected), expected);
   }
 
   m.Call(0);
   {
-    uint32_t expected[] = {1, 1, 0, 1};
+    uint32_t expected[] = {1, 1, 1, 0, 0, 1};
     m.Expect(arraysize(expected), expected);
   }
 
@@ -66,13 +62,13 @@ TEST(ProfileDiamond) {
 
   m.Call(1);
   {
-    uint32_t expected[] = {1, 0, 1, 1};
+    uint32_t expected[] = {1, 0, 0, 1, 1, 1};
     m.Expect(arraysize(expected), expected);
   }
 
   m.Call(0);
   {
-    uint32_t expected[] = {2, 1, 1, 2};
+    uint32_t expected[] = {2, 1, 1, 1, 1, 2};
     m.Expect(arraysize(expected), expected);
   }
 }
@@ -81,12 +77,12 @@ TEST(ProfileDiamond) {
 TEST(ProfileLoop) {
   BasicBlockProfilerTest m;
 
-  MLabel header, body, end;
+  RawMachineLabel header, body, end;
   Node* one = m.Int32Constant(1);
   m.Goto(&header);
 
   m.Bind(&header);
-  Node* count = m.Phi(kMachInt32, m.Parameter(0), one);
+  Node* count = m.Phi(MachineRepresentation::kWord32, m.Parameter(0), one);
   m.Branch(count, &body, &end);
 
   m.Bind(&body);
@@ -98,7 +94,7 @@ TEST(ProfileLoop) {
 
   m.GenerateCode();
   {
-    uint32_t expected[] = {0, 0, 0, 0};
+    uint32_t expected[] = {0, 0, 0, 0, 0, 0};
     m.Expect(arraysize(expected), expected);
   }
 
@@ -106,7 +102,7 @@ TEST(ProfileLoop) {
   for (size_t i = 0; i < arraysize(runs); i++) {
     m.ResetCounts();
     CHECK_EQ(1, m.Call(static_cast<int>(runs[i])));
-    uint32_t expected[] = {1, runs[i] + 1, runs[i], 1};
+    uint32_t expected[] = {1, runs[i] + 1, runs[i], runs[i], 1, 1};
     m.Expect(arraysize(expected), expected);
   }
 }

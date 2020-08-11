@@ -2,20 +2,22 @@
 
 const common = require('../common');
 const fs = require('fs');
+const path = require('path');
 
 const bench = common.createBenchmark(main, {
-  n: [1e4],
+  n: [10],
+  dir: [ 'lib', 'test/parallel'],
+  withFileTypes: ['true', 'false']
 });
 
-
-function main(conf) {
-  const n = conf.n >>> 0;
-
+function main({ n, dir, withFileTypes }) {
+  withFileTypes = withFileTypes === 'true';
+  const fullPath = path.resolve(__dirname, '../../', dir);
   bench.start();
   (function r(cntr) {
-    if (--cntr <= 0)
+    if (cntr-- <= 0)
       return bench.end(n);
-    fs.readdir(__dirname + '/../../lib/', function() {
+    fs.readdir(fullPath, { withFileTypes }, () => {
       r(cntr);
     });
   }(n));

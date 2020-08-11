@@ -83,6 +83,13 @@ static void getaddrinfo_cuncurrent_cb(uv_getaddrinfo_t* handle,
 TEST_IMPL(getaddrinfo_fail) {
   uv_getaddrinfo_t req;
 
+  ASSERT(UV_EINVAL == uv_getaddrinfo(uv_default_loop(),
+                                     &req,
+                                     (uv_getaddrinfo_cb) abort,
+                                     NULL,
+                                     NULL,
+                                     NULL));
+
   /* Use a FQDN by ending in a period */
   ASSERT(0 == uv_getaddrinfo(uv_default_loop(),
                              &req,
@@ -99,6 +106,10 @@ TEST_IMPL(getaddrinfo_fail) {
 
 
 TEST_IMPL(getaddrinfo_fail_sync) {
+/* TODO(gengjiawen): Fix test on QEMU. */
+#if defined(__QEMU__)
+  RETURN_SKIP("Test does not currently work in QEMU");
+#endif
   uv_getaddrinfo_t req;
 
   /* Use a FQDN by ending in a period */
@@ -137,6 +148,10 @@ TEST_IMPL(getaddrinfo_basic) {
 
 
 TEST_IMPL(getaddrinfo_basic_sync) {
+/* TODO(gengjiawen): Fix test on QEMU. */
+#if defined(__QEMU__)
+  RETURN_SKIP("Test does not currently work in QEMU");
+#endif
   uv_getaddrinfo_t req;
 
   ASSERT(0 == uv_getaddrinfo(uv_default_loop(),

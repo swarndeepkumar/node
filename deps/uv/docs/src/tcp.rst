@@ -53,12 +53,17 @@ API
 
 .. c:function:: int uv_tcp_nodelay(uv_tcp_t* handle, int enable)
 
-    Enable / disable Nagle's algorithm.
+    Enable `TCP_NODELAY`, which disables Nagle's algorithm.
 
 .. c:function:: int uv_tcp_keepalive(uv_tcp_t* handle, int enable, unsigned int delay)
 
     Enable / disable TCP keep-alive. `delay` is the initial delay in seconds,
     ignored when `enable` is zero.
+
+    After `delay` has been reached, 10 successive probes, each spaced 1 second
+    from the previous one, will still happen. If the connection is still lost
+    at the end of this procedure, then the handle is destroyed with a
+    ``UV_ETIMEDOUT`` error passed to the corresponding callback.
 
 .. c:function:: int uv_tcp_simultaneous_accepts(uv_tcp_t* handle, int enable)
 
@@ -86,13 +91,13 @@ API
 
 .. c:function:: int uv_tcp_getsockname(const uv_tcp_t* handle, struct sockaddr* name, int* namelen)
 
-    Get the current address to which the handle is bound. `addr` must point to
+    Get the current address to which the handle is bound. `name` must point to
     a valid and big enough chunk of memory, ``struct sockaddr_storage`` is
     recommended for IPv4 and IPv6 support.
 
 .. c:function:: int uv_tcp_getpeername(const uv_tcp_t* handle, struct sockaddr* name, int* namelen)
 
-    Get the address of the peer connected to the handle. `addr` must point to
+    Get the address of the peer connected to the handle. `name` must point to
     a valid and big enough chunk of memory, ``struct sockaddr_storage`` is
     recommended for IPv4 and IPv6 support.
 
@@ -102,7 +107,24 @@ API
     and an uninitialized :c:type:`uv_connect_t`. `addr` should point to an
     initialized ``struct sockaddr_in`` or ``struct sockaddr_in6``.
 
+    On Windows if the `addr` is initialized to point to an unspecified address
+    (``0.0.0.0`` or ``::``) it will be changed to point to ``localhost``.
+    This is done to match the behavior of Linux systems.
+
     The callback is made when the connection has been established or when a
     connection error happened.
 
+    .. versionchanged:: 1.19.0 added ``0.0.0.0`` and ``::`` to ``localhost``
+        mapping
+
 .. seealso:: The :c:type:`uv_stream_t` API functions also apply.
+
+.. c:function:: int uv_tcp_close_reset(uv_tcp_t* handle, uv_close_cb close_cb)
+
+    Resets a TCP connection by sending a RST packet. This is accomplished by
+    setting the `SO_LINGER` socket option with a linger interval of zero and
+    then calling :c:func:`uv_close`.
+    Due to some platform inconsistencies, mixing of :c:func:`uv_shutdown` and
+    :c:func:`uv_tcp_close_reset` calls is not allowed.
+
+    .. versionadded:: 1.32.0

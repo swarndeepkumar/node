@@ -2,7 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "test/unittests/compiler/instruction-selector-unittest.h"
+#include "test/unittests/compiler/backend/instruction-selector-unittest.h"
+
+#include "src/objects/objects-inl.h"
 
 namespace v8 {
 namespace internal {
@@ -13,13 +15,14 @@ namespace {
 // Immediates (random subset).
 const int32_t kImmediates[] = {kMinInt, -42, -1,   0,      1,          2,
                                3,       4,   5,    6,      7,          8,
-                               16,      42,  0xff, 0xffff, 0x0f0f0f0f, kMaxInt};
+                               16,      42,  0xFF, 0xFFFF, 0x0F0F0F0F, kMaxInt};
 
 }  // namespace
 
 
 TEST_F(InstructionSelectorTest, Int32AddWithParameter) {
-  StreamBuilder m(this, kMachInt32, kMachInt32, kMachInt32);
+  StreamBuilder m(this, MachineType::Int32(), MachineType::Int32(),
+                  MachineType::Int32());
   m.Return(m.Int32Add(m.Parameter(0), m.Parameter(1)));
   Stream s = m.Build();
   ASSERT_EQ(1U, s.size());
@@ -30,7 +33,7 @@ TEST_F(InstructionSelectorTest, Int32AddWithParameter) {
 TEST_F(InstructionSelectorTest, Int32AddWithImmediate) {
   TRACED_FOREACH(int32_t, imm, kImmediates) {
     {
-      StreamBuilder m(this, kMachInt32, kMachInt32);
+      StreamBuilder m(this, MachineType::Int32(), MachineType::Int32());
       m.Return(m.Int32Add(m.Parameter(0), m.Int32Constant(imm)));
       Stream s = m.Build();
       ASSERT_EQ(1U, s.size());
@@ -43,7 +46,7 @@ TEST_F(InstructionSelectorTest, Int32AddWithImmediate) {
       }
     }
     {
-      StreamBuilder m(this, kMachInt32, kMachInt32);
+      StreamBuilder m(this, MachineType::Int32(), MachineType::Int32());
       m.Return(m.Int32Add(m.Int32Constant(imm), m.Parameter(0)));
       Stream s = m.Build();
       ASSERT_EQ(1U, s.size());
@@ -60,7 +63,8 @@ TEST_F(InstructionSelectorTest, Int32AddWithImmediate) {
 
 
 TEST_F(InstructionSelectorTest, Int32SubWithParameter) {
-  StreamBuilder m(this, kMachInt32, kMachInt32, kMachInt32);
+  StreamBuilder m(this, MachineType::Int32(), MachineType::Int32(),
+                  MachineType::Int32());
   m.Return(m.Int32Sub(m.Parameter(0), m.Parameter(1)));
   Stream s = m.Build();
   ASSERT_EQ(1U, s.size());
@@ -71,7 +75,7 @@ TEST_F(InstructionSelectorTest, Int32SubWithParameter) {
 
 TEST_F(InstructionSelectorTest, Int32SubWithImmediate) {
   TRACED_FOREACH(int32_t, imm, kImmediates) {
-    StreamBuilder m(this, kMachInt32, kMachInt32);
+    StreamBuilder m(this, MachineType::Int32(), MachineType::Int32());
     m.Return(m.Int32Sub(m.Parameter(0), m.Int32Constant(imm)));
     Stream s = m.Build();
     ASSERT_EQ(1U, s.size());
@@ -87,7 +91,7 @@ TEST_F(InstructionSelectorTest, Int32SubWithImmediate) {
 
 
 TEST_F(InstructionSelectorTest, ChangeFloat32ToFloat64WithParameter) {
-  StreamBuilder m(this, kMachFloat32, kMachFloat64);
+  StreamBuilder m(this, MachineType::Float32(), MachineType::Float64());
   m.Return(m.ChangeFloat32ToFloat64(m.Parameter(0)));
   Stream s = m.Build();
   ASSERT_EQ(1U, s.size());
@@ -98,7 +102,7 @@ TEST_F(InstructionSelectorTest, ChangeFloat32ToFloat64WithParameter) {
 
 
 TEST_F(InstructionSelectorTest, TruncateFloat64ToFloat32WithParameter) {
-  StreamBuilder m(this, kMachFloat64, kMachFloat32);
+  StreamBuilder m(this, MachineType::Float64(), MachineType::Float32());
   m.Return(m.TruncateFloat64ToFloat32(m.Parameter(0)));
   Stream s = m.Build();
   ASSERT_EQ(1U, s.size());
@@ -113,7 +117,8 @@ TEST_F(InstructionSelectorTest, TruncateFloat64ToFloat32WithParameter) {
 
 
 TEST_F(InstructionSelectorTest, BetterLeftOperandTestAddBinop) {
-  StreamBuilder m(this, kMachInt32, kMachInt32, kMachInt32);
+  StreamBuilder m(this, MachineType::Int32(), MachineType::Int32(),
+                  MachineType::Int32());
   Node* param1 = m.Parameter(0);
   Node* param2 = m.Parameter(1);
   Node* add = m.Int32Add(param1, param2);
@@ -131,7 +136,8 @@ TEST_F(InstructionSelectorTest, BetterLeftOperandTestAddBinop) {
 
 
 TEST_F(InstructionSelectorTest, BetterLeftOperandTestMulBinop) {
-  StreamBuilder m(this, kMachInt32, kMachInt32, kMachInt32);
+  StreamBuilder m(this, MachineType::Int32(), MachineType::Int32(),
+                  MachineType::Int32());
   Node* param1 = m.Parameter(0);
   Node* param2 = m.Parameter(1);
   Node* mul = m.Int32Mul(param1, param2);
@@ -151,7 +157,7 @@ TEST_F(InstructionSelectorTest, BetterLeftOperandTestMulBinop) {
 
 
 TEST_F(InstructionSelectorTest, ChangeUint32ToFloat64WithParameter) {
-  StreamBuilder m(this, kMachFloat64, kMachUint32);
+  StreamBuilder m(this, MachineType::Float64(), MachineType::Uint32());
   m.Return(m.ChangeUint32ToFloat64(m.Parameter(0)));
   Stream s = m.Build();
   ASSERT_EQ(1U, s.size());
@@ -178,25 +184,24 @@ std::ostream& operator<<(std::ostream& os, const MemoryAccess& memacc) {
 
 
 static const MemoryAccess kMemoryAccesses[] = {
-    {kMachInt8, kIA32Movsxbl, kIA32Movb},
-    {kMachUint8, kIA32Movzxbl, kIA32Movb},
-    {kMachInt16, kIA32Movsxwl, kIA32Movw},
-    {kMachUint16, kIA32Movzxwl, kIA32Movw},
-    {kMachInt32, kIA32Movl, kIA32Movl},
-    {kMachUint32, kIA32Movl, kIA32Movl},
-    {kMachFloat32, kIA32Movss, kIA32Movss},
-    {kMachFloat64, kIA32Movsd, kIA32Movsd}};
+    {MachineType::Int8(), kIA32Movsxbl, kIA32Movb},
+    {MachineType::Uint8(), kIA32Movzxbl, kIA32Movb},
+    {MachineType::Int16(), kIA32Movsxwl, kIA32Movw},
+    {MachineType::Uint16(), kIA32Movzxwl, kIA32Movw},
+    {MachineType::Int32(), kIA32Movl, kIA32Movl},
+    {MachineType::Uint32(), kIA32Movl, kIA32Movl},
+    {MachineType::Float32(), kIA32Movss, kIA32Movss},
+    {MachineType::Float64(), kIA32Movsd, kIA32Movsd}};
 
 }  // namespace
 
-
-typedef InstructionSelectorTestWithParam<MemoryAccess>
-    InstructionSelectorMemoryAccessTest;
-
+using InstructionSelectorMemoryAccessTest =
+    InstructionSelectorTestWithParam<MemoryAccess>;
 
 TEST_P(InstructionSelectorMemoryAccessTest, LoadWithParameters) {
   const MemoryAccess memacc = GetParam();
-  StreamBuilder m(this, memacc.type, kMachPtr, kMachInt32);
+  StreamBuilder m(this, memacc.type, MachineType::Pointer(),
+                  MachineType::Int32());
   m.Return(m.Load(memacc.type, m.Parameter(0), m.Parameter(1)));
   Stream s = m.Build();
   ASSERT_EQ(1U, s.size());
@@ -209,7 +214,7 @@ TEST_P(InstructionSelectorMemoryAccessTest, LoadWithParameters) {
 TEST_P(InstructionSelectorMemoryAccessTest, LoadWithImmediateBase) {
   const MemoryAccess memacc = GetParam();
   TRACED_FOREACH(int32_t, base, kImmediates) {
-    StreamBuilder m(this, memacc.type, kMachPtr);
+    StreamBuilder m(this, memacc.type, MachineType::Pointer());
     m.Return(m.Load(memacc.type, m.Int32Constant(base), m.Parameter(0)));
     Stream s = m.Build();
     ASSERT_EQ(1U, s.size());
@@ -229,7 +234,7 @@ TEST_P(InstructionSelectorMemoryAccessTest, LoadWithImmediateBase) {
 TEST_P(InstructionSelectorMemoryAccessTest, LoadWithImmediateIndex) {
   const MemoryAccess memacc = GetParam();
   TRACED_FOREACH(int32_t, index, kImmediates) {
-    StreamBuilder m(this, memacc.type, kMachPtr);
+    StreamBuilder m(this, memacc.type, MachineType::Pointer());
     m.Return(m.Load(memacc.type, m.Parameter(0), m.Int32Constant(index)));
     Stream s = m.Build();
     ASSERT_EQ(1U, s.size());
@@ -248,9 +253,10 @@ TEST_P(InstructionSelectorMemoryAccessTest, LoadWithImmediateIndex) {
 
 TEST_P(InstructionSelectorMemoryAccessTest, StoreWithParameters) {
   const MemoryAccess memacc = GetParam();
-  StreamBuilder m(this, kMachInt32, kMachPtr, kMachInt32, memacc.type);
-  m.Store(memacc.type, m.Parameter(0), m.Parameter(1), m.Parameter(2),
-          kNoWriteBarrier);
+  StreamBuilder m(this, MachineType::Int32(), MachineType::Pointer(),
+                  MachineType::Int32(), memacc.type);
+  m.Store(memacc.type.representation(), m.Parameter(0), m.Parameter(1),
+          m.Parameter(2), kNoWriteBarrier);
   m.Return(m.Int32Constant(0));
   Stream s = m.Build();
   ASSERT_EQ(1U, s.size());
@@ -263,9 +269,10 @@ TEST_P(InstructionSelectorMemoryAccessTest, StoreWithParameters) {
 TEST_P(InstructionSelectorMemoryAccessTest, StoreWithImmediateBase) {
   const MemoryAccess memacc = GetParam();
   TRACED_FOREACH(int32_t, base, kImmediates) {
-    StreamBuilder m(this, kMachInt32, kMachInt32, memacc.type);
-    m.Store(memacc.type, m.Int32Constant(base), m.Parameter(0), m.Parameter(1),
-            kNoWriteBarrier);
+    StreamBuilder m(this, MachineType::Int32(), MachineType::Int32(),
+                    memacc.type);
+    m.Store(memacc.type.representation(), m.Int32Constant(base), m.Parameter(0),
+            m.Parameter(1), kNoWriteBarrier);
     m.Return(m.Int32Constant(0));
     Stream s = m.Build();
     ASSERT_EQ(1U, s.size());
@@ -285,9 +292,10 @@ TEST_P(InstructionSelectorMemoryAccessTest, StoreWithImmediateBase) {
 TEST_P(InstructionSelectorMemoryAccessTest, StoreWithImmediateIndex) {
   const MemoryAccess memacc = GetParam();
   TRACED_FOREACH(int32_t, index, kImmediates) {
-    StreamBuilder m(this, kMachInt32, kMachPtr, memacc.type);
-    m.Store(memacc.type, m.Parameter(0), m.Int32Constant(index), m.Parameter(1),
-            kNoWriteBarrier);
+    StreamBuilder m(this, MachineType::Int32(), MachineType::Pointer(),
+                    memacc.type);
+    m.Store(memacc.type.representation(), m.Parameter(0),
+            m.Int32Constant(index), m.Parameter(1), kNoWriteBarrier);
     m.Return(m.Int32Constant(0));
     Stream s = m.Build();
     ASSERT_EQ(1U, s.size());
@@ -303,11 +311,9 @@ TEST_P(InstructionSelectorMemoryAccessTest, StoreWithImmediateIndex) {
   }
 }
 
-
-INSTANTIATE_TEST_CASE_P(InstructionSelectorTest,
-                        InstructionSelectorMemoryAccessTest,
-                        ::testing::ValuesIn(kMemoryAccesses));
-
+INSTANTIATE_TEST_SUITE_P(InstructionSelectorTest,
+                         InstructionSelectorMemoryAccessTest,
+                         ::testing::ValuesIn(kMemoryAccesses));
 
 // -----------------------------------------------------------------------------
 // AddressingMode for loads and stores.
@@ -320,8 +326,9 @@ class AddressingModeUnitTest : public InstructionSelectorTest {
 
   void Run(Node* base, Node* load_index, Node* store_index,
            AddressingMode mode) {
-    Node* load = m->Load(kMachInt32, base, load_index);
-    m->Store(kMachInt32, base, store_index, load, kNoWriteBarrier);
+    Node* load = m->Load(MachineType::Int32(), base, load_index);
+    m->Store(MachineRepresentation::kWord32, base, store_index, load,
+             kNoWriteBarrier);
     m->Return(m->Int32Constant(0));
     Stream s = m->Build();
     ASSERT_EQ(2U, s.size());
@@ -339,7 +346,8 @@ class AddressingModeUnitTest : public InstructionSelectorTest {
 
   void Reset() {
     delete m;
-    m = new StreamBuilder(this, kMachInt32, kMachInt32, kMachInt32);
+    m = new StreamBuilder(this, MachineType::Int32(), MachineType::Int32(),
+                          MachineType::Int32());
     zero = m->Int32Constant(0);
     null_ptr = m->Int32Constant(0);
     non_zero = m->Int32Constant(127);
@@ -498,9 +506,7 @@ const MultParam kMultParams[] = {{-1, false, kMode_None},
 
 }  // namespace
 
-
-typedef InstructionSelectorTestWithParam<MultParam> InstructionSelectorMultTest;
-
+using InstructionSelectorMultTest = InstructionSelectorTestWithParam<MultParam>;
 
 static unsigned InputCountForLea(AddressingMode mode) {
   switch (mode) {
@@ -529,7 +535,6 @@ static unsigned InputCountForLea(AddressingMode mode) {
       return 1U;
     default:
       UNREACHABLE();
-      return 0U;
   }
 }
 
@@ -558,14 +563,13 @@ static AddressingMode AddressingModeForAddMult(int32_t imm,
       return kMode_MRI;
     default:
       UNREACHABLE();
-      return kMode_None;
   }
 }
 
 
 TEST_P(InstructionSelectorMultTest, Mult32) {
   const MultParam m_param = GetParam();
-  StreamBuilder m(this, kMachInt32, kMachInt32);
+  StreamBuilder m(this, MachineType::Int32(), MachineType::Int32());
   Node* param = m.Parameter(0);
   Node* mult = m.Int32Mul(param, m.Int32Constant(m_param.value));
   m.Return(mult);
@@ -586,7 +590,7 @@ TEST_P(InstructionSelectorMultTest, Mult32) {
 TEST_P(InstructionSelectorMultTest, MultAdd32) {
   TRACED_FOREACH(int32_t, imm, kImmediates) {
     const MultParam m_param = GetParam();
-    StreamBuilder m(this, kMachInt32, kMachInt32);
+    StreamBuilder m(this, MachineType::Int32(), MachineType::Int32());
     Node* param = m.Parameter(0);
     Node* mult = m.Int32Add(m.Int32Mul(param, m.Int32Constant(m_param.value)),
                             m.Int32Constant(imm));
@@ -612,13 +616,12 @@ TEST_P(InstructionSelectorMultTest, MultAdd32) {
   }
 }
 
-
-INSTANTIATE_TEST_CASE_P(InstructionSelectorTest, InstructionSelectorMultTest,
-                        ::testing::ValuesIn(kMultParams));
-
+INSTANTIATE_TEST_SUITE_P(InstructionSelectorTest, InstructionSelectorMultTest,
+                         ::testing::ValuesIn(kMultParams));
 
 TEST_F(InstructionSelectorTest, Int32MulHigh) {
-  StreamBuilder m(this, kMachInt32, kMachInt32, kMachInt32);
+  StreamBuilder m(this, MachineType::Int32(), MachineType::Int32(),
+                  MachineType::Int32());
   Node* const p0 = m.Parameter(0);
   Node* const p1 = m.Parameter(1);
   Node* const n = m.Int32MulHigh(p0, p1);
@@ -638,12 +641,88 @@ TEST_F(InstructionSelectorTest, Int32MulHigh) {
 
 
 // -----------------------------------------------------------------------------
-// Floating point operations.
+// Binops with a memory operand.
 
+TEST_F(InstructionSelectorTest, LoadAnd32) {
+  StreamBuilder m(this, MachineType::Int32(), MachineType::Int32(),
+                  MachineType::Int32());
+  Node* const p0 = m.Parameter(0);
+  Node* const p1 = m.Parameter(1);
+  m.Return(
+      m.Word32And(p0, m.Load(MachineType::Int32(), p1, m.Int32Constant(127))));
+  Stream s = m.Build();
+  ASSERT_EQ(1U, s.size());
+  EXPECT_EQ(kIA32And, s[0]->arch_opcode());
+  ASSERT_EQ(3U, s[0]->InputCount());
+  EXPECT_EQ(s.ToVreg(p0), s.ToVreg(s[0]->InputAt(0)));
+  EXPECT_EQ(s.ToVreg(p1), s.ToVreg(s[0]->InputAt(1)));
+}
+
+TEST_F(InstructionSelectorTest, LoadOr32) {
+  StreamBuilder m(this, MachineType::Int32(), MachineType::Int32(),
+                  MachineType::Int32());
+  Node* const p0 = m.Parameter(0);
+  Node* const p1 = m.Parameter(1);
+  m.Return(
+      m.Word32Or(p0, m.Load(MachineType::Int32(), p1, m.Int32Constant(127))));
+  Stream s = m.Build();
+  ASSERT_EQ(1U, s.size());
+  EXPECT_EQ(kIA32Or, s[0]->arch_opcode());
+  ASSERT_EQ(3U, s[0]->InputCount());
+  EXPECT_EQ(s.ToVreg(p0), s.ToVreg(s[0]->InputAt(0)));
+  EXPECT_EQ(s.ToVreg(p1), s.ToVreg(s[0]->InputAt(1)));
+}
+
+TEST_F(InstructionSelectorTest, LoadXor32) {
+  StreamBuilder m(this, MachineType::Int32(), MachineType::Int32(),
+                  MachineType::Int32());
+  Node* const p0 = m.Parameter(0);
+  Node* const p1 = m.Parameter(1);
+  m.Return(
+      m.Word32Xor(p0, m.Load(MachineType::Int32(), p1, m.Int32Constant(127))));
+  Stream s = m.Build();
+  ASSERT_EQ(1U, s.size());
+  EXPECT_EQ(kIA32Xor, s[0]->arch_opcode());
+  ASSERT_EQ(3U, s[0]->InputCount());
+  EXPECT_EQ(s.ToVreg(p0), s.ToVreg(s[0]->InputAt(0)));
+  EXPECT_EQ(s.ToVreg(p1), s.ToVreg(s[0]->InputAt(1)));
+}
+
+TEST_F(InstructionSelectorTest, LoadAdd32) {
+  StreamBuilder m(this, MachineType::Int32(), MachineType::Int32(),
+                  MachineType::Int32());
+  Node* const p0 = m.Parameter(0);
+  Node* const p1 = m.Parameter(1);
+  m.Return(
+      m.Int32Add(p0, m.Load(MachineType::Int32(), p1, m.Int32Constant(127))));
+  Stream s = m.Build();
+  // Use lea instead of add, so memory operand is invalid.
+  ASSERT_EQ(2U, s.size());
+  EXPECT_EQ(kIA32Movl, s[0]->arch_opcode());
+  EXPECT_EQ(kIA32Lea, s[1]->arch_opcode());
+}
+
+TEST_F(InstructionSelectorTest, LoadSub32) {
+  StreamBuilder m(this, MachineType::Int32(), MachineType::Int32(),
+                  MachineType::Int32());
+  Node* const p0 = m.Parameter(0);
+  Node* const p1 = m.Parameter(1);
+  m.Return(
+      m.Int32Sub(p0, m.Load(MachineType::Int32(), p1, m.Int32Constant(127))));
+  Stream s = m.Build();
+  ASSERT_EQ(1U, s.size());
+  EXPECT_EQ(kIA32Sub, s[0]->arch_opcode());
+  ASSERT_EQ(3U, s[0]->InputCount());
+  EXPECT_EQ(s.ToVreg(p0), s.ToVreg(s[0]->InputAt(0)));
+  EXPECT_EQ(s.ToVreg(p1), s.ToVreg(s[0]->InputAt(1)));
+}
+
+// -----------------------------------------------------------------------------
+// Floating point operations.
 
 TEST_F(InstructionSelectorTest, Float32Abs) {
   {
-    StreamBuilder m(this, kMachFloat32, kMachFloat32);
+    StreamBuilder m(this, MachineType::Float32(), MachineType::Float32());
     Node* const p0 = m.Parameter(0);
     Node* const n = m.Float32Abs(p0);
     m.Return(n);
@@ -658,7 +737,7 @@ TEST_F(InstructionSelectorTest, Float32Abs) {
     EXPECT_EQ(kFlags_none, s[0]->flags_mode());
   }
   {
-    StreamBuilder m(this, kMachFloat32, kMachFloat32);
+    StreamBuilder m(this, MachineType::Float32(), MachineType::Float32());
     Node* const p0 = m.Parameter(0);
     Node* const n = m.Float32Abs(p0);
     m.Return(n);
@@ -676,7 +755,7 @@ TEST_F(InstructionSelectorTest, Float32Abs) {
 
 TEST_F(InstructionSelectorTest, Float64Abs) {
   {
-    StreamBuilder m(this, kMachFloat64, kMachFloat64);
+    StreamBuilder m(this, MachineType::Float64(), MachineType::Float64());
     Node* const p0 = m.Parameter(0);
     Node* const n = m.Float64Abs(p0);
     m.Return(n);
@@ -691,7 +770,7 @@ TEST_F(InstructionSelectorTest, Float64Abs) {
     EXPECT_EQ(kFlags_none, s[0]->flags_mode());
   }
   {
-    StreamBuilder m(this, kMachFloat64, kMachFloat64);
+    StreamBuilder m(this, MachineType::Float64(), MachineType::Float64());
     Node* const p0 = m.Parameter(0);
     Node* const n = m.Float64Abs(p0);
     m.Return(n);
@@ -709,7 +788,8 @@ TEST_F(InstructionSelectorTest, Float64Abs) {
 
 TEST_F(InstructionSelectorTest, Float64BinopArithmetic) {
   {
-    StreamBuilder m(this, kMachFloat64, kMachFloat64, kMachFloat64);
+    StreamBuilder m(this, MachineType::Float64(), MachineType::Float64(),
+                    MachineType::Float64());
     Node* add = m.Float64Add(m.Parameter(0), m.Parameter(1));
     Node* mul = m.Float64Mul(add, m.Parameter(1));
     Node* sub = m.Float64Sub(mul, add);
@@ -723,7 +803,8 @@ TEST_F(InstructionSelectorTest, Float64BinopArithmetic) {
     EXPECT_EQ(kAVXFloat64Div, s[3]->arch_opcode());
   }
   {
-    StreamBuilder m(this, kMachFloat64, kMachFloat64, kMachFloat64);
+    StreamBuilder m(this, MachineType::Float64(), MachineType::Float64(),
+                    MachineType::Float64());
     Node* add = m.Float64Add(m.Parameter(0), m.Parameter(1));
     Node* mul = m.Float64Mul(add, m.Parameter(1));
     Node* sub = m.Float64Sub(mul, add);
@@ -738,96 +819,11 @@ TEST_F(InstructionSelectorTest, Float64BinopArithmetic) {
   }
 }
 
-
-TEST_F(InstructionSelectorTest, Float32SubWithMinusZeroAndParameter) {
-  {
-    StreamBuilder m(this, kMachFloat32, kMachFloat32);
-    Node* const p0 = m.Parameter(0);
-    Node* const n = m.Float32Sub(m.Float32Constant(-0.0f), p0);
-    m.Return(n);
-    Stream s = m.Build();
-    ASSERT_EQ(1U, s.size());
-    EXPECT_EQ(kSSEFloat32Neg, s[0]->arch_opcode());
-    ASSERT_EQ(1U, s[0]->InputCount());
-    EXPECT_EQ(s.ToVreg(p0), s.ToVreg(s[0]->InputAt(0)));
-    ASSERT_EQ(1U, s[0]->OutputCount());
-    EXPECT_EQ(s.ToVreg(n), s.ToVreg(s[0]->Output()));
-    EXPECT_EQ(kFlags_none, s[0]->flags_mode());
-  }
-  {
-    StreamBuilder m(this, kMachFloat32, kMachFloat32);
-    Node* const p0 = m.Parameter(0);
-    Node* const n = m.Float32Sub(m.Float32Constant(-0.0f), p0);
-    m.Return(n);
-    Stream s = m.Build(AVX);
-    ASSERT_EQ(1U, s.size());
-    EXPECT_EQ(kAVXFloat32Neg, s[0]->arch_opcode());
-    ASSERT_EQ(1U, s[0]->InputCount());
-    EXPECT_EQ(s.ToVreg(p0), s.ToVreg(s[0]->InputAt(0)));
-    ASSERT_EQ(1U, s[0]->OutputCount());
-    EXPECT_EQ(s.ToVreg(n), s.ToVreg(s[0]->Output()));
-    EXPECT_EQ(kFlags_none, s[0]->flags_mode());
-  }
-}
-
-
-TEST_F(InstructionSelectorTest, Float64SubWithMinusZeroAndParameter) {
-  {
-    StreamBuilder m(this, kMachFloat64, kMachFloat64);
-    Node* const p0 = m.Parameter(0);
-    Node* const n = m.Float64Sub(m.Float64Constant(-0.0), p0);
-    m.Return(n);
-    Stream s = m.Build();
-    ASSERT_EQ(1U, s.size());
-    EXPECT_EQ(kSSEFloat64Neg, s[0]->arch_opcode());
-    ASSERT_EQ(1U, s[0]->InputCount());
-    EXPECT_EQ(s.ToVreg(p0), s.ToVreg(s[0]->InputAt(0)));
-    ASSERT_EQ(1U, s[0]->OutputCount());
-    EXPECT_EQ(s.ToVreg(n), s.ToVreg(s[0]->Output()));
-    EXPECT_EQ(kFlags_none, s[0]->flags_mode());
-  }
-  {
-    StreamBuilder m(this, kMachFloat64, kMachFloat64);
-    Node* const p0 = m.Parameter(0);
-    Node* const n = m.Float64Sub(m.Float64Constant(-0.0), p0);
-    m.Return(n);
-    Stream s = m.Build(AVX);
-    ASSERT_EQ(1U, s.size());
-    EXPECT_EQ(kAVXFloat64Neg, s[0]->arch_opcode());
-    ASSERT_EQ(1U, s[0]->InputCount());
-    EXPECT_EQ(s.ToVreg(p0), s.ToVreg(s[0]->InputAt(0)));
-    ASSERT_EQ(1U, s[0]->OutputCount());
-    EXPECT_EQ(s.ToVreg(n), s.ToVreg(s[0]->Output()));
-    EXPECT_EQ(kFlags_none, s[0]->flags_mode());
-  }
-}
-
-
 // -----------------------------------------------------------------------------
 // Miscellaneous.
 
-
-TEST_F(InstructionSelectorTest, Uint32LessThanWithLoadAndLoadStackPointer) {
-  StreamBuilder m(this, kMachBool);
-  Node* const sl = m.Load(
-      kMachPtr,
-      m.ExternalConstant(ExternalReference::address_of_stack_limit(isolate())));
-  Node* const sp = m.LoadStackPointer();
-  Node* const n = m.Uint32LessThan(sl, sp);
-  m.Return(n);
-  Stream s = m.Build();
-  ASSERT_EQ(1U, s.size());
-  EXPECT_EQ(kIA32StackCheck, s[0]->arch_opcode());
-  ASSERT_EQ(0U, s[0]->InputCount());
-  ASSERT_EQ(1U, s[0]->OutputCount());
-  EXPECT_EQ(s.ToVreg(n), s.ToVreg(s[0]->Output()));
-  EXPECT_EQ(kFlags_set, s[0]->flags_mode());
-  EXPECT_EQ(kUnsignedGreaterThan, s[0]->flags_condition());
-}
-
-
 TEST_F(InstructionSelectorTest, Word32Clz) {
-  StreamBuilder m(this, kMachUint32, kMachUint32);
+  StreamBuilder m(this, MachineType::Uint32(), MachineType::Uint32());
   Node* const p0 = m.Parameter(0);
   Node* const n = m.Word32Clz(p0);
   m.Return(n);

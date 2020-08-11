@@ -5,96 +5,106 @@
 #ifndef V8_INTERPRETER_INTERPRETER_H_
 #define V8_INTERPRETER_INTERPRETER_H_
 
+#include <memory>
+
 // Clients of this interface shouldn't depend on lots of interpreter internals.
 // Do not include anything from src/interpreter other than
 // src/interpreter/bytecodes.h here!
 #include "src/base/macros.h"
-#include "src/builtins.h"
+#include "src/builtins/builtins.h"
 #include "src/interpreter/bytecodes.h"
 #include "src/runtime/runtime.h"
-#include "src/token.h"
 
 namespace v8 {
 namespace internal {
 
-class Isolate;
+class BytecodeArray;
 class Callable;
-class CompilationInfo;
-
-namespace compiler {
-class InterpreterAssembler;
-}
+class UnoptimizedCompilationJob;
+class FunctionLiteral;
+class Isolate;
+class ParseInfo;
+class RootVisitor;
+class SetupIsolateDelegate;
+template <typename>
+class ZoneVector;
 
 namespace interpreter {
+
+class InterpreterAssembler;
 
 class Interpreter {
  public:
   explicit Interpreter(Isolate* isolate);
-  virtual ~Interpreter() {}
+  virtual ~Interpreter() = default;
 
-  // Creates an uninitialized interpreter handler table, where each handler
-  // points to the Illegal builtin.
-  static Handle<FixedArray> CreateUninitializedInterpreterTable(
-      Isolate* isolate);
+  // Creates a compilation job which will generate bytecode for |literal|.
+  // Additionally, if |eager_inner_literals| is not null, adds any eagerly
+  // compilable inner FunctionLiterals to this list.
+  static std::unique_ptr<UnoptimizedCompilationJob> NewCompilationJob(
+      ParseInfo* parse_info, FunctionLiteral* literal,
+      AccountingAllocator* allocator,
+      std::vector<FunctionLiteral*>* eager_inner_literals);
 
-  // Initializes the interpreter.
+  // Creates a compilation job which will generate source positions for
+  // |literal| and when finalized, store the result into |existing_bytecode|.
+  static std::unique_ptr<UnoptimizedCompilationJob>
+  NewSourcePositionCollectionJob(ParseInfo* parse_info,
+                                 FunctionLiteral* literal,
+                                 Handle<BytecodeArray> existing_bytecode,
+                                 AccountingAllocator* allocator);
+
+  // If the bytecode handler for |bytecode| and |operand_scale| has not yet
+  // been loaded, deserialize it. Then return the handler.
+  V8_EXPORT_PRIVATE Code GetBytecodeHandler(Bytecode bytecode,
+                                            OperandScale operand_scale);
+
+  // Set the bytecode handler for |bytecode| and |operand_scale|.
+  void SetBytecodeHandler(Bytecode bytecode, OperandScale operand_scale,
+                          Code handler);
+
+  // Disassembler support.
+  V8_EXPORT_PRIVATE const char* LookupNameOfBytecodeHandler(const Code code);
+
+  V8_EXPORT_PRIVATE Local<v8::Object> GetDispatchCountersObject();
+
+  void ForEachBytecode(const std::function<void(Bytecode, OperandScale)>& f);
+
   void Initialize();
 
-  // Generate bytecode for |info|.
-  static bool MakeBytecode(CompilationInfo* info);
+  bool IsDispatchTableInitialized() const;
+
+  Address dispatch_table_address() {
+    return reinterpret_cast<Address>(&dispatch_table_[0]);
+  }
+
+  Address bytecode_dispatch_counters_table() {
+    return reinterpret_cast<Address>(bytecode_dispatch_counters_table_.get());
+  }
+
+  Address address_of_interpreter_entry_trampoline_instruction_start() const {
+    return reinterpret_cast<Address>(
+        &interpreter_entry_trampoline_instruction_start_);
+  }
 
  private:
-// Bytecode handler generator functions.
-#define DECLARE_BYTECODE_HANDLER_GENERATOR(Name, ...) \
-  void Do##Name(compiler::InterpreterAssembler* assembler);
-  BYTECODE_LIST(DECLARE_BYTECODE_HANDLER_GENERATOR)
-#undef DECLARE_BYTECODE_HANDLER_GENERATOR
+  friend class SetupInterpreter;
+  friend class v8::internal::SetupIsolateDelegate;
 
-  // Generates code to perform the binary operations via |function_id|.
-  void DoBinaryOp(Runtime::FunctionId function_id,
-                  compiler::InterpreterAssembler* assembler);
+  uintptr_t GetDispatchCounter(Bytecode from, Bytecode to) const;
 
-  // Generates code to perform the count operations via |function_id|.
-  void DoCountOp(Runtime::FunctionId function_id,
-                 compiler::InterpreterAssembler* assembler);
+  // Get dispatch table index of bytecode.
+  static size_t GetDispatchTableIndex(Bytecode bytecode,
+                                      OperandScale operand_scale);
 
-  // Generates code to perform the comparison operation associated with
-  // |compare_op|.
-  void DoCompareOp(Token::Value compare_op,
-                   compiler::InterpreterAssembler* assembler);
-
-  // Generates code to load a constant from the constant pool.
-  void DoLoadConstant(compiler::InterpreterAssembler* assembler);
-
-  // Generates code to perform a global load via |ic|.
-  void DoLoadGlobal(Callable ic, compiler::InterpreterAssembler* assembler);
-
-  // Generates code to perform a global store via |ic|.
-  void DoStoreGlobal(Callable ic, compiler::InterpreterAssembler* assembler);
-
-  // Generates code to perform a named property load via |ic|.
-  void DoLoadIC(Callable ic, compiler::InterpreterAssembler* assembler);
-
-  // Generates code to perform a keyed property load via |ic|.
-  void DoKeyedLoadIC(Callable ic, compiler::InterpreterAssembler* assembler);
-
-  // Generates code to perform a namedproperty store via |ic|.
-  void DoStoreIC(Callable ic, compiler::InterpreterAssembler* assembler);
-
-  // Generates code to perform a keyed property store via |ic|.
-  void DoKeyedStoreIC(Callable ic, compiler::InterpreterAssembler* assembler);
-
-  // Generates code ro create a literal via |function_id|.
-  void DoCreateLiteral(Runtime::FunctionId function_id,
-                       compiler::InterpreterAssembler* assembler);
-
-  // Generates code to perform delete via function_id.
-  void DoDelete(Runtime::FunctionId function_id,
-                compiler::InterpreterAssembler* assembler);
-
-  bool IsInterpreterTableInitialized(Handle<FixedArray> handler_table);
+  static const int kNumberOfWideVariants = BytecodeOperands::kOperandScaleCount;
+  static const int kDispatchTableSize = kNumberOfWideVariants * (kMaxUInt8 + 1);
+  static const int kNumberOfBytecodes = static_cast<int>(Bytecode::kLast) + 1;
 
   Isolate* isolate_;
+  Address dispatch_table_[kDispatchTableSize];
+  std::unique_ptr<uintptr_t[]> bytecode_dispatch_counters_table_;
+  Address interpreter_entry_trampoline_instruction_start_;
 
   DISALLOW_COPY_AND_ASSIGN(Interpreter);
 };

@@ -1,7 +1,7 @@
 var test = require('tap').test
 
 var npmconf = require('../../lib/config/core.js')
-var common = require('./00-config-setup.js')
+var common = require('../common-config.js')
 
 var URI = 'https://registry.lvh.me:8661/'
 
@@ -79,7 +79,7 @@ test('set with token', function (t) {
       password: undefined,
       email: undefined,
       auth: undefined,
-      alwaysAuth: undefined
+      alwaysAuth: false
     }
 
     t.same(conf.getCredentialsByURI(URI), expected, 'got bearer token and scope')

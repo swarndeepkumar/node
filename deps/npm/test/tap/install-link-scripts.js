@@ -2,13 +2,13 @@ var fs = require('graceful-fs')
 var path = require('path')
 
 var mkdirp = require('mkdirp')
-var osenv = require('osenv')
 var rimraf = require('rimraf')
-var test = require('tap').test
+const t = require('tap')
 
 var common = require('../common-tap.js')
+common.skipIfWindows('links are weird on windows')
 
-var pkg = path.join(__dirname, 'install-link-scripts')
+var pkg = common.pkg
 var tmp = path.join(pkg, 'tmp')
 var dep = path.join(pkg, 'dep')
 
@@ -24,21 +24,41 @@ var dependency = {
   name: 'dep',
   version: '1.0.0',
   scripts: {
-    install: './bin/foo'
+    install: 'node ./bin/foo'
   }
 }
 
-var foo = function () {/*
+var foo = function () { /*
 #!/usr/bin/env node
 
 console.log('hey sup')
-*/}.toString().split('\n').slice(1, -1).join('\n')
+*/ }.toString().split('\n').slice(1, -1).join('\n')
 
 process.env.npm_config_prefix = tmp
 
-test('plain install', function (t) {
-  setup()
+t.beforeEach(cb => {
+  rimraf(pkg, er => {
+    if (er) {
+      return cb(er)
+    }
+    mkdirp.sync(tmp)
+    fs.writeFileSync(
+      path.join(pkg, 'package.json'),
+      JSON.stringify(json, null, 2)
+    )
 
+    mkdirp.sync(path.join(dep, 'bin'))
+    fs.writeFileSync(
+      path.join(dep, 'package.json'),
+      JSON.stringify(dependency, null, 2)
+    )
+    fs.writeFileSync(path.join(dep, 'bin', 'foo'), foo)
+    fs.chmod(path.join(dep, 'bin', 'foo'), '0755')
+    cb()
+  })
+})
+
+t.test('plain install', function (t) {
   common.npm(
     [
       'install', dep,
@@ -55,9 +75,7 @@ test('plain install', function (t) {
   )
 })
 
-test('link', function (t) {
-  setup()
-
+t.test('link', function (t) {
   common.npm(
     [
       'link',
@@ -74,9 +92,7 @@ test('link', function (t) {
   )
 })
 
-test('install --link', function (t) {
-  setup()
-
+t.test('install --link', function (t) {
   common.npm(
     [
       'link',
@@ -103,30 +119,3 @@ test('install --link', function (t) {
     }
   )
 })
-
-test('cleanup', function (t) {
-  cleanup()
-  t.end()
-})
-
-function setup () {
-  cleanup()
-  mkdirp.sync(tmp)
-  fs.writeFileSync(
-    path.join(pkg, 'package.json'),
-    JSON.stringify(json, null, 2)
-  )
-
-  mkdirp.sync(path.join(dep, 'bin'))
-  fs.writeFileSync(
-    path.join(dep, 'package.json'),
-    JSON.stringify(dependency, null, 2)
-  )
-  fs.writeFileSync(path.join(dep, 'bin', 'foo'), foo)
-  fs.chmod(path.join(dep, 'bin', 'foo'), '0755')
-}
-
-function cleanup () {
-  process.chdir(osenv.tmpdir())
-  rimraf.sync(pkg)
-}

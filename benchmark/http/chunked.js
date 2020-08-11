@@ -6,36 +6,37 @@
 // always as hot as it could be.
 //
 // Verify that our assumptions are valid.
+'use strict';
 
-var common = require('../common.js');
-var PORT = common.PORT;
+const common = require('../common.js');
 
-var bench = common.createBenchmark(main, {
-  num: [1, 4, 8, 16],
-  size: [1, 64, 256],
-  c: [100]
+const bench = common.createBenchmark(main, {
+  n: [1, 4, 8, 16],
+  len: [1, 64, 256],
+  c: [100],
+  duration: 5
 });
 
-function main(conf) {
-  http = require('http');
-  var chunk = new Buffer(conf.size);
-  chunk.fill('8');
+function main({ len, n, c, duration }) {
+  const http = require('http');
+  const chunk = Buffer.alloc(len, '8');
 
-  var args = ['-d', '10s', '-t', 8, '-c', conf.c];
-
-  var server = http.createServer(function(req, res) {
+  const server = http.createServer((req, res) => {
     function send(left) {
       if (left === 0) return res.end();
       res.write(chunk);
-      setTimeout(function() {
+      setTimeout(() => {
         send(left - 1);
       }, 0);
     }
-    send(conf.num);
+    send(n);
   });
 
-  server.listen(common.PORT, function() {
-    bench.http('/', args, function() {
+  server.listen(common.PORT, () => {
+    bench.http({
+      connections: c,
+      duration
+    }, () => {
       server.close();
     });
   });

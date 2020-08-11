@@ -2,18 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef V8_REGEXP_MIPS_REGEXP_MACRO_ASSEMBLER_MIPS_H_
-#define V8_REGEXP_MIPS_REGEXP_MACRO_ASSEMBLER_MIPS_H_
+#ifndef V8_REGEXP_MIPS64_REGEXP_MACRO_ASSEMBLER_MIPS64_H_
+#define V8_REGEXP_MIPS64_REGEXP_MACRO_ASSEMBLER_MIPS64_H_
 
-#include "src/macro-assembler.h"
-#include "src/mips64/assembler-mips64.h"
+#include "src/codegen/macro-assembler.h"
+#include "src/codegen/mips64/assembler-mips64.h"
 #include "src/regexp/regexp-macro-assembler.h"
 
 namespace v8 {
 namespace internal {
 
-#ifndef V8_INTERPRETED_REGEXP
-class RegExpMacroAssemblerMIPS: public NativeRegExpMacroAssembler {
+class V8_EXPORT_PRIVATE RegExpMacroAssemblerMIPS
+    : public NativeRegExpMacroAssembler {
  public:
   RegExpMacroAssemblerMIPS(Isolate* isolate, Zone* zone, Mode mode,
                            int registers_to_save);
@@ -23,7 +23,7 @@ class RegExpMacroAssemblerMIPS: public NativeRegExpMacroAssembler {
   virtual void AdvanceRegister(int reg, int by);
   virtual void Backtrack();
   virtual void Bind(Label* label);
-  virtual void CheckAtStart(Label* on_at_start);
+  virtual void CheckAtStart(int cp_offset, Label* on_at_start);
   virtual void CheckCharacter(uint32_t c, Label* on_equal);
   virtual void CheckCharacterAfterAnd(uint32_t c,
                                       uint32_t mask,
@@ -33,9 +33,11 @@ class RegExpMacroAssemblerMIPS: public NativeRegExpMacroAssembler {
   // A "greedy loop" is a loop that is both greedy and with a simple
   // body. It has a particularly simple implementation.
   virtual void CheckGreedyLoop(Label* on_tos_equals_current_position);
-  virtual void CheckNotAtStart(Label* on_not_at_start);
-  virtual void CheckNotBackReference(int start_reg, Label* on_no_match);
+  virtual void CheckNotAtStart(int cp_offset, Label* on_not_at_start);
+  virtual void CheckNotBackReference(int start_reg, bool read_backward,
+                                     Label* on_no_match);
   virtual void CheckNotBackReferenceIgnoreCase(int start_reg,
+                                               bool read_backward,
                                                Label* on_no_match);
   virtual void CheckNotCharacter(uint32_t c, Label* on_not_equal);
   virtual void CheckNotCharacterAfterAnd(uint32_t c,
@@ -65,10 +67,8 @@ class RegExpMacroAssemblerMIPS: public NativeRegExpMacroAssembler {
   virtual void IfRegisterLT(int reg, int comparand, Label* if_lt);
   virtual void IfRegisterEqPos(int reg, Label* if_eq);
   virtual IrregexpImplementation Implementation();
-  virtual void LoadCurrentCharacter(int cp_offset,
-                                    Label* on_end_of_input,
-                                    bool check_bounds = true,
-                                    int characters = 1);
+  virtual void LoadCurrentCharacterUnchecked(int cp_offset,
+                                             int character_count);
   virtual void PopCurrentPosition();
   virtual void PopRegister(int register_index);
   virtual void PushBacktrack(Label* label);
@@ -88,13 +88,13 @@ class RegExpMacroAssemblerMIPS: public NativeRegExpMacroAssembler {
   // Called from RegExp if the stack-guard is triggered.
   // If the code object is relocated, the return address is fixed before
   // returning.
-  static int64_t CheckStackGuardState(Address* return_address, Code* re_code,
+  // {raw_code} is an Address because this is called via ExternalReference.
+  static int64_t CheckStackGuardState(Address* return_address, Address raw_code,
                                       Address re_frame);
 
   void print_regexp_frame_constants();
 
  private:
-#if defined(MIPS_ABI_N64)
   // Offsets from frame_pointer() of function parameters and stored registers.
   static const int kFramePointer = 0;
 
@@ -103,12 +103,11 @@ class RegExpMacroAssemblerMIPS: public NativeRegExpMacroAssembler {
   static const int kStoredRegisters = kFramePointer;
   // Return address (stored from link register, read into pc on return).
 
-// TODO(plind): This 9 - is 8 s-regs (s0..s7) plus fp.
+  // TODO(plind): This 9 - is 8 s-regs (s0..s7) plus fp.
 
   static const int kReturnAddress = kStoredRegisters + 9 * kPointerSize;
-  static const int kSecondaryReturnAddress = kReturnAddress + kPointerSize;
   // Stack frame header.
-  static const int kStackFrameHeader = kSecondaryReturnAddress;
+  static const int kStackFrameHeader = kReturnAddress;
   // Stack parameters placed by caller.
   static const int kIsolate = kStackFrameHeader + kPointerSize;
 
@@ -125,53 +124,13 @@ class RegExpMacroAssemblerMIPS: public NativeRegExpMacroAssembler {
   // When adding local variables remember to push space for them in
   // the frame in GetCode.
   static const int kSuccessfulCaptures = kInputString - kPointerSize;
-  static const int kInputStartMinusOne = kSuccessfulCaptures - kPointerSize;
+  static const int kStringStartMinusOne = kSuccessfulCaptures - kPointerSize;
+  static const int kBacktrackCount = kStringStartMinusOne - kSystemPointerSize;
   // First register address. Following registers are below it on the stack.
-  static const int kRegisterZero = kInputStartMinusOne - kPointerSize;
-
-#elif defined(MIPS_ABI_O32)
-  // Offsets from frame_pointer() of function parameters and stored registers.
-  static const int kFramePointer = 0;
-
-  // Above the frame pointer - Stored registers and stack passed parameters.
-  // Registers s0 to s7, fp, and ra.
-  static const int kStoredRegisters = kFramePointer;
-  // Return address (stored from link register, read into pc on return).
-  static const int kReturnAddress = kStoredRegisters + 9 * kPointerSize;
-  static const int kSecondaryReturnAddress = kReturnAddress + kPointerSize;
-  // Stack frame header.
-  static const int kStackFrameHeader = kReturnAddress + kPointerSize;
-  // Stack parameters placed by caller.
-  static const int kRegisterOutput =
-      kStackFrameHeader + 4 * kPointerSize + kPointerSize;
-  static const int kNumOutputRegisters = kRegisterOutput + kPointerSize;
-  static const int kStackHighEnd = kNumOutputRegisters + kPointerSize;
-  static const int kDirectCall = kStackHighEnd + kPointerSize;
-  static const int kIsolate = kDirectCall + kPointerSize;
-
-  // Below the frame pointer.
-  // Register parameters stored by setup code.
-  static const int kInputEnd = kFramePointer - kPointerSize;
-  static const int kInputStart = kInputEnd - kPointerSize;
-  static const int kStartIndex = kInputStart - kPointerSize;
-  static const int kInputString = kStartIndex - kPointerSize;
-  // When adding local variables remember to push space for them in
-  // the frame in GetCode.
-  static const int kSuccessfulCaptures = kInputString - kPointerSize;
-  static const int kInputStartMinusOne = kSuccessfulCaptures - kPointerSize;
-  // First register address. Following registers are below it on the stack.
-  static const int kRegisterZero = kInputStartMinusOne - kPointerSize;
-
-#else
-# error "undefined MIPS ABI"
-#endif
+  static const int kRegisterZero = kBacktrackCount - kSystemPointerSize;
 
   // Initial size of code buffer.
-  static const size_t kRegExpCodeSize = 1024;
-
-  // Load a number of characters at the given offset from the
-  // current position, into the current-character register.
-  void LoadCurrentCharacterUnchecked(int cp_offset, int character_count);
+  static const int kRegExpCodeSize = 1024;
 
   // Check whether preemption has been requested.
   void CheckPreemption();
@@ -211,7 +170,7 @@ class RegExpMacroAssemblerMIPS: public NativeRegExpMacroAssembler {
   inline int char_size() { return static_cast<int>(mode_); }
 
   // Equivalent to a conditional branch to the label, unless the label
-  // is NULL, in which case it is a conditional Backtrack.
+  // is nullptr, in which case it is a conditional Backtrack.
   void BranchOrBacktrack(Label* to,
                          Condition condition,
                          Register rs,
@@ -259,10 +218,7 @@ class RegExpMacroAssemblerMIPS: public NativeRegExpMacroAssembler {
   Label internal_failure_label_;
 };
 
-#endif  // V8_INTERPRETED_REGEXP
-
-
 }  // namespace internal
 }  // namespace v8
 
-#endif  // V8_REGEXP_MIPS_REGEXP_MACRO_ASSEMBLER_MIPS_H_
+#endif  // V8_REGEXP_MIPS64_REGEXP_MACRO_ASSEMBLER_MIPS64_H_

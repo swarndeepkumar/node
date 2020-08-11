@@ -2,9 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// TODO(jochen): Remove this after the setting is turned on globally.
-#define V8_IMMINENT_DEPRECATION_WARNINGS
-
 #include <functional>
 
 #include "src/compiler/graph.h"
@@ -15,6 +12,7 @@
 namespace v8 {
 namespace internal {
 namespace compiler {
+namespace node {
 
 #define NONE reinterpret_cast<Node*>(1)
 
@@ -38,15 +36,28 @@ static Operator dummy_operator3(IrOpcode::kParameter, Operator::kNoWrite,
 
 namespace {
 
-typedef std::multiset<Node*, std::less<Node*>> NodeMSet;
-
+using NodeMSet = std::multiset<Node*, std::less<Node*>>;
 
 void CheckUseChain(Node* node, Node** uses, int use_count) {
   // Check ownership.
   if (use_count == 1) CHECK(node->OwnedBy(uses[0]));
   if (use_count > 1) {
+    Node* first_use = uses[0];
+    bool different_uses = false;
     for (int i = 0; i < use_count; i++) {
-      CHECK(!node->OwnedBy(uses[i]));
+      if (uses[i] != first_use) {
+        different_uses = true;
+        break;
+      }
+    }
+    if (different_uses) {
+      // If there are different uses, check that node is not owned by any use.
+      for (int i = 0; i < use_count; i++) {
+        CHECK(!node->OwnedBy(uses[i]));
+      }
+    } else {
+      // If all uses are the same, check that node is owned by that use.
+      CHECK(node->OwnedBy(first_use));
     }
   }
 
@@ -144,7 +155,8 @@ void CheckInputs(Node* node, Node** inputs, int input_count) {
 
 
 TEST(NodeUseIteratorReplaceUses) {
-  Zone zone;
+  v8::internal::AccountingAllocator allocator;
+  Zone zone(&allocator, ZONE_NAME);
   Graph graph(&zone);
   Node* n0 = graph.NewNode(&dummy_operator0);
   Node* n1 = graph.NewNode(&dummy_operator1, n0);
@@ -169,7 +181,8 @@ TEST(NodeUseIteratorReplaceUses) {
 
 
 TEST(NodeUseIteratorReplaceUsesSelf) {
-  Zone zone;
+  v8::internal::AccountingAllocator allocator;
+  Zone zone(&allocator, ZONE_NAME);
   Graph graph(&zone);
   Node* n0 = graph.NewNode(&dummy_operator0);
   Node* n1 = graph.NewNode(&dummy_operator1, n0);
@@ -193,7 +206,8 @@ TEST(NodeUseIteratorReplaceUsesSelf) {
 
 
 TEST(ReplaceInput) {
-  Zone zone;
+  v8::internal::AccountingAllocator allocator;
+  Zone zone(&allocator, ZONE_NAME);
   Graph graph(&zone);
   Node* n0 = graph.NewNode(&dummy_operator0);
   Node* n1 = graph.NewNode(&dummy_operator0);
@@ -219,7 +233,8 @@ TEST(ReplaceInput) {
 
 
 TEST(OwnedBy) {
-  Zone zone;
+  v8::internal::AccountingAllocator allocator;
+  Zone zone(&allocator, ZONE_NAME);
   Graph graph(&zone);
 
   {
@@ -269,7 +284,8 @@ TEST(OwnedBy) {
 
 
 TEST(Uses) {
-  Zone zone;
+  v8::internal::AccountingAllocator allocator;
+  Zone zone(&allocator, ZONE_NAME);
   Graph graph(&zone);
 
   Node* n0 = graph.NewNode(&dummy_operator0);
@@ -291,7 +307,8 @@ TEST(Uses) {
 
 
 TEST(Inputs) {
-  Zone zone;
+  v8::internal::AccountingAllocator allocator;
+  Zone zone(&allocator, ZONE_NAME);
   Graph graph(&zone);
 
   Node* n0 = graph.NewNode(&dummy_operator0);
@@ -317,9 +334,84 @@ TEST(Inputs) {
   CHECK_USES(n4, n3, n3, n5);
 }
 
+TEST(InsertInputs) {
+  v8::internal::AccountingAllocator allocator;
+  Zone zone(&allocator, ZONE_NAME);
+  Graph graph(&zone);
+
+  Node* n0 = graph.NewNode(&dummy_operator0);
+  Node* n1 = graph.NewNode(&dummy_operator1, n0);
+  Node* n2 = graph.NewNode(&dummy_operator1, n0);
+
+  {
+    Node* node = graph.NewNode(&dummy_operator1, n0);
+    node->InsertInputs(graph.zone(), 0, 1);
+    node->ReplaceInput(0, n1);
+    CHECK_INPUTS(node, n1, n0);
+  }
+  {
+    Node* node = graph.NewNode(&dummy_operator1, n0);
+    node->InsertInputs(graph.zone(), 0, 2);
+    node->ReplaceInput(0, node);
+    node->ReplaceInput(1, n2);
+    CHECK_INPUTS(node, node, n2, n0);
+  }
+  {
+    Node* node = graph.NewNode(&dummy_operator3, n0, n1, n2);
+    node->InsertInputs(graph.zone(), 0, 1);
+    node->ReplaceInput(0, node);
+    CHECK_INPUTS(node, node, n0, n1, n2);
+  }
+  {
+    Node* node = graph.NewNode(&dummy_operator3, n0, n1, n2);
+    node->InsertInputs(graph.zone(), 1, 1);
+    node->ReplaceInput(1, node);
+    CHECK_INPUTS(node, n0, node, n1, n2);
+  }
+  {
+    Node* node = graph.NewNode(&dummy_operator3, n0, n1, n2);
+    node->InsertInputs(graph.zone(), 2, 1);
+    node->ReplaceInput(2, node);
+    CHECK_INPUTS(node, n0, n1, node, n2);
+  }
+  {
+    Node* node = graph.NewNode(&dummy_operator3, n0, n1, n2);
+    node->InsertInputs(graph.zone(), 2, 1);
+    node->ReplaceInput(2, node);
+    CHECK_INPUTS(node, n0, n1, node, n2);
+  }
+  {
+    Node* node = graph.NewNode(&dummy_operator3, n0, n1, n2);
+    node->InsertInputs(graph.zone(), 0, 4);
+    node->ReplaceInput(0, node);
+    node->ReplaceInput(1, node);
+    node->ReplaceInput(2, node);
+    node->ReplaceInput(3, node);
+    CHECK_INPUTS(node, node, node, node, node, n0, n1, n2);
+  }
+  {
+    Node* node = graph.NewNode(&dummy_operator3, n0, n1, n2);
+    node->InsertInputs(graph.zone(), 1, 4);
+    node->ReplaceInput(1, node);
+    node->ReplaceInput(2, node);
+    node->ReplaceInput(3, node);
+    node->ReplaceInput(4, node);
+    CHECK_INPUTS(node, n0, node, node, node, node, n1, n2);
+  }
+  {
+    Node* node = graph.NewNode(&dummy_operator3, n0, n1, n2);
+    node->InsertInputs(graph.zone(), 2, 4);
+    node->ReplaceInput(2, node);
+    node->ReplaceInput(3, node);
+    node->ReplaceInput(4, node);
+    node->ReplaceInput(5, node);
+    CHECK_INPUTS(node, n0, n1, node, node, node, node, n2);
+  }
+}
 
 TEST(RemoveInput) {
-  Zone zone;
+  v8::internal::AccountingAllocator allocator;
+  Zone zone(&allocator, ZONE_NAME);
   Graph graph(&zone);
 
   Node* n0 = graph.NewNode(&dummy_operator0);
@@ -349,7 +441,8 @@ TEST(RemoveInput) {
 
 
 TEST(AppendInputsAndIterator) {
-  Zone zone;
+  v8::internal::AccountingAllocator allocator;
+  Zone zone(&allocator, ZONE_NAME);
   Graph graph(&zone);
 
   Node* n0 = graph.NewNode(&dummy_operator0);
@@ -371,7 +464,8 @@ TEST(AppendInputsAndIterator) {
 
 
 TEST(NullInputsSimple) {
-  Zone zone;
+  v8::internal::AccountingAllocator allocator;
+  Zone zone(&allocator, ZONE_NAME);
   Graph graph(&zone);
 
   Node* n0 = graph.NewNode(&dummy_operator0);
@@ -385,20 +479,21 @@ TEST(NullInputsSimple) {
 
   n2->ReplaceInput(0, nullptr);
 
-  CHECK_INPUTS(n2, NULL, n1);
+  CHECK_INPUTS(n2, nullptr, n1);
 
   CHECK_USES(n0, n1);
 
   n2->ReplaceInput(1, nullptr);
 
-  CHECK_INPUTS(n2, NULL, NULL);
+  CHECK_INPUTS(n2, nullptr, nullptr);
 
   CHECK_USES(n1, NONE);
 }
 
 
 TEST(NullInputsAppended) {
-  Zone zone;
+  v8::internal::AccountingAllocator allocator;
+  Zone zone(&allocator, ZONE_NAME);
   Graph graph(&zone);
 
   Node* n0 = graph.NewNode(&dummy_operator0);
@@ -413,15 +508,16 @@ TEST(NullInputsAppended) {
   CHECK_USES(n1, n3);
   CHECK_USES(n2, n3);
 
-  n3->ReplaceInput(1, NULL);
+  n3->ReplaceInput(1, nullptr);
   CHECK_USES(n1, NONE);
 
-  CHECK_INPUTS(n3, n0, NULL, n2);
+  CHECK_INPUTS(n3, n0, nullptr, n2);
 }
 
 
 TEST(ReplaceUsesFromAppendedInputs) {
-  Zone zone;
+  v8::internal::AccountingAllocator allocator;
+  Zone zone(&allocator, ZONE_NAME);
   Graph graph(&zone);
 
   Node* n0 = graph.NewNode(&dummy_operator0);
@@ -449,7 +545,8 @@ TEST(ReplaceUsesFromAppendedInputs) {
 
 
 TEST(ReplaceInputMultipleUses) {
-  Zone zone;
+  v8::internal::AccountingAllocator allocator;
+  Zone zone(&allocator, ZONE_NAME);
   Graph graph(&zone);
 
   Node* n0 = graph.NewNode(&dummy_operator0);
@@ -467,7 +564,8 @@ TEST(ReplaceInputMultipleUses) {
 
 
 TEST(TrimInputCountInline) {
-  Zone zone;
+  v8::internal::AccountingAllocator allocator;
+  Zone zone(&allocator, ZONE_NAME);
   Graph graph(&zone);
 
   {
@@ -535,7 +633,8 @@ TEST(TrimInputCountInline) {
 
 
 TEST(TrimInputCountOutOfLine1) {
-  Zone zone;
+  v8::internal::AccountingAllocator allocator;
+  Zone zone(&allocator, ZONE_NAME);
   Graph graph(&zone);
 
   {
@@ -629,7 +728,8 @@ TEST(TrimInputCountOutOfLine1) {
 
 
 TEST(TrimInputCountOutOfLine2) {
-  Zone zone;
+  v8::internal::AccountingAllocator allocator;
+  Zone zone(&allocator, ZONE_NAME);
   Graph graph(&zone);
 
   {
@@ -698,7 +798,8 @@ TEST(TrimInputCountOutOfLine2) {
 
 
 TEST(NullAllInputs) {
-  Zone zone;
+  v8::internal::AccountingAllocator allocator;
+  Zone zone(&allocator, ZONE_NAME);
   Graph graph(&zone);
 
   for (int i = 0; i < 2; i++) {
@@ -720,13 +821,13 @@ TEST(NullAllInputs) {
 
     CHECK_USES(n0, n1, n2);
     n1->NullAllInputs();
-    CHECK_INPUTS(n1, NULL);
+    CHECK_INPUTS(n1, nullptr);
     CHECK_INPUTS(n2, n0, n1);
     CHECK_USES(n0, n2);
 
     n2->NullAllInputs();
-    CHECK_INPUTS(n1, NULL);
-    CHECK_INPUTS(n2, NULL, NULL);
+    CHECK_INPUTS(n1, nullptr);
+    CHECK_INPUTS(n2, nullptr, nullptr);
     CHECK_USES(n0, NONE);
   }
 
@@ -742,7 +843,7 @@ TEST(NullAllInputs) {
     n1->NullAllInputs();
 
     CHECK_INPUTS(n0, NONE);
-    CHECK_INPUTS(n1, NULL);
+    CHECK_INPUTS(n1, nullptr);
     CHECK_USES(n0, NONE);
     CHECK_USES(n1, NONE);
   }
@@ -750,7 +851,8 @@ TEST(NullAllInputs) {
 
 
 TEST(AppendAndTrim) {
-  Zone zone;
+  v8::internal::AccountingAllocator allocator;
+  Zone zone(&allocator, ZONE_NAME);
   Graph graph(&zone);
 
   Node* nodes[] = {
@@ -787,6 +889,11 @@ TEST(AppendAndTrim) {
   }
 }
 
+#undef NONE
+#undef CHECK_USES
+#undef CHECK_INPUTS
+
+}  // namespace node
 }  // namespace compiler
 }  // namespace internal
 }  // namespace v8

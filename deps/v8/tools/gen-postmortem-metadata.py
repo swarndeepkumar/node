@@ -46,18 +46,27 @@
 # the generated libv8 binary.
 #
 
+# for py2/py3 compatibility
+from __future__ import print_function
+
+import io
 import re
 import sys
 
 #
-# Miscellaneous constants, tags, and masks used for object identification.
+# Miscellaneous constants such as tags and masks used for object identification,
+# enumeration values used as indexes in internal tables, etc..
 #
 consts_misc = [
     { 'name': 'FirstNonstringType',     'value': 'FIRST_NONSTRING_TYPE' },
+    { 'name': 'APIObjectType',          'value': 'JS_API_OBJECT_TYPE' },
+    { 'name': 'SpecialAPIObjectType',   'value': 'JS_SPECIAL_API_OBJECT_TYPE' },
+
+    { 'name': 'FirstContextType',     'value': 'FIRST_CONTEXT_TYPE' },
+    { 'name': 'LastContextType',     'value': 'LAST_CONTEXT_TYPE' },
 
     { 'name': 'IsNotStringMask',        'value': 'kIsNotStringMask' },
     { 'name': 'StringTag',              'value': 'kStringTag' },
-    { 'name': 'NotStringTag',           'value': 'kNotStringTag' },
 
     { 'name': 'StringEncodingMask',     'value': 'kStringEncodingMask' },
     { 'name': 'TwoByteStringTag',       'value': 'kTwoByteStringTag' },
@@ -69,6 +78,7 @@ consts_misc = [
     { 'name': 'ConsStringTag',          'value': 'kConsStringTag' },
     { 'name': 'ExternalStringTag',      'value': 'kExternalStringTag' },
     { 'name': 'SlicedStringTag',        'value': 'kSlicedStringTag' },
+    { 'name': 'ThinStringTag',          'value': 'kThinStringTag' },
 
     { 'name': 'HeapObjectTag',          'value': 'kHeapObjectTag' },
     { 'name': 'HeapObjectTagMask',      'value': 'kHeapObjectTagMask' },
@@ -76,24 +86,43 @@ consts_misc = [
     { 'name': 'SmiTagMask',             'value': 'kSmiTagMask' },
     { 'name': 'SmiValueShift',          'value': 'kSmiTagSize' },
     { 'name': 'SmiShiftSize',           'value': 'kSmiShiftSize' },
-    { 'name': 'PointerSizeLog2',        'value': 'kPointerSizeLog2' },
+    { 'name': 'SystemPointerSize',      'value': 'kSystemPointerSize' },
+    { 'name': 'SystemPointerSizeLog2',  'value': 'kSystemPointerSizeLog2' },
+    { 'name': 'TaggedSize',             'value': 'kTaggedSize' },
+    { 'name': 'TaggedSizeLog2',         'value': 'kTaggedSizeLog2' },
 
     { 'name': 'OddballFalse',           'value': 'Oddball::kFalse' },
     { 'name': 'OddballTrue',            'value': 'Oddball::kTrue' },
     { 'name': 'OddballTheHole',         'value': 'Oddball::kTheHole' },
     { 'name': 'OddballNull',            'value': 'Oddball::kNull' },
-    { 'name': 'OddballArgumentMarker',  'value': 'Oddball::kArgumentMarker' },
+    { 'name': 'OddballArgumentsMarker', 'value': 'Oddball::kArgumentsMarker' },
     { 'name': 'OddballUndefined',       'value': 'Oddball::kUndefined' },
     { 'name': 'OddballUninitialized',   'value': 'Oddball::kUninitialized' },
     { 'name': 'OddballOther',           'value': 'Oddball::kOther' },
     { 'name': 'OddballException',       'value': 'Oddball::kException' },
 
-    { 'name': 'prop_idx_first',
-        'value': 'DescriptorArray::kFirstIndex' },
-    { 'name': 'prop_type_field',
-        'value': 'DATA' },
-    { 'name': 'prop_type_mask',
-        'value': 'PropertyDetails::TypeField::kMask' },
+    { 'name': 'prop_kind_Data',
+        'value': 'kData' },
+    { 'name': 'prop_kind_Accessor',
+        'value': 'kAccessor' },
+    { 'name': 'prop_kind_mask',
+        'value': 'PropertyDetails::KindField::kMask' },
+    { 'name': 'prop_location_Descriptor',
+        'value': 'kDescriptor' },
+    { 'name': 'prop_location_Field',
+        'value': 'kField' },
+    { 'name': 'prop_location_mask',
+        'value': 'PropertyDetails::LocationField::kMask' },
+    { 'name': 'prop_location_shift',
+        'value': 'PropertyDetails::LocationField::kShift' },
+    { 'name': 'prop_attributes_NONE', 'value': 'NONE' },
+    { 'name': 'prop_attributes_READ_ONLY', 'value': 'READ_ONLY' },
+    { 'name': 'prop_attributes_DONT_ENUM', 'value': 'DONT_ENUM' },
+    { 'name': 'prop_attributes_DONT_DELETE', 'value': 'DONT_DELETE' },
+    { 'name': 'prop_attributes_mask',
+        'value': 'PropertyDetails::AttributesField::kMask' },
+    { 'name': 'prop_attributes_shift',
+        'value': 'PropertyDetails::AttributesField::kShift' },
     { 'name': 'prop_index_mask',
         'value': 'PropertyDetails::FieldIndexField::kMask' },
     { 'name': 'prop_index_shift',
@@ -102,127 +131,155 @@ consts_misc = [
         'value': 'PropertyDetails::RepresentationField::kMask' },
     { 'name': 'prop_representation_shift',
         'value': 'PropertyDetails::RepresentationField::kShift' },
-    { 'name': 'prop_representation_integer8',
-        'value': 'Representation::Kind::kInteger8' },
-    { 'name': 'prop_representation_uinteger8',
-        'value': 'Representation::Kind::kUInteger8' },
-    { 'name': 'prop_representation_integer16',
-        'value': 'Representation::Kind::kInteger16' },
-    { 'name': 'prop_representation_uinteger16',
-        'value': 'Representation::Kind::kUInteger16' },
     { 'name': 'prop_representation_smi',
         'value': 'Representation::Kind::kSmi' },
-    { 'name': 'prop_representation_integer32',
-        'value': 'Representation::Kind::kInteger32' },
     { 'name': 'prop_representation_double',
         'value': 'Representation::Kind::kDouble' },
     { 'name': 'prop_representation_heapobject',
         'value': 'Representation::Kind::kHeapObject' },
     { 'name': 'prop_representation_tagged',
         'value': 'Representation::Kind::kTagged' },
-    { 'name': 'prop_representation_external',
-        'value': 'Representation::Kind::kExternal' },
 
     { 'name': 'prop_desc_key',
-        'value': 'DescriptorArray::kDescriptorKey' },
+        'value': 'DescriptorArray::kEntryKeyIndex' },
     { 'name': 'prop_desc_details',
-        'value': 'DescriptorArray::kDescriptorDetails' },
+        'value': 'DescriptorArray::kEntryDetailsIndex' },
     { 'name': 'prop_desc_value',
-        'value': 'DescriptorArray::kDescriptorValue' },
+        'value': 'DescriptorArray::kEntryValueIndex' },
     { 'name': 'prop_desc_size',
-        'value': 'DescriptorArray::kDescriptorSize' },
+        'value': 'DescriptorArray::kEntrySize' },
 
     { 'name': 'elements_fast_holey_elements',
-        'value': 'FAST_HOLEY_ELEMENTS' },
+        'value': 'HOLEY_ELEMENTS' },
     { 'name': 'elements_fast_elements',
-        'value': 'FAST_ELEMENTS' },
+        'value': 'PACKED_ELEMENTS' },
     { 'name': 'elements_dictionary_elements',
         'value': 'DICTIONARY_ELEMENTS' },
 
     { 'name': 'bit_field2_elements_kind_mask',
-        'value': 'Map::ElementsKindBits::kMask' },
+        'value': 'Map::Bits2::ElementsKindBits::kMask' },
     { 'name': 'bit_field2_elements_kind_shift',
-        'value': 'Map::ElementsKindBits::kShift' },
-    { 'name': 'bit_field3_dictionary_map_shift',
-        'value': 'Map::DictionaryMap::kShift' },
+        'value': 'Map::Bits2::ElementsKindBits::kShift' },
+    { 'name': 'bit_field3_is_dictionary_map_shift',
+        'value': 'Map::Bits3::IsDictionaryMapBit::kShift' },
     { 'name': 'bit_field3_number_of_own_descriptors_mask',
-        'value': 'Map::NumberOfOwnDescriptorsBits::kMask' },
+        'value': 'Map::Bits3::NumberOfOwnDescriptorsBits::kMask' },
     { 'name': 'bit_field3_number_of_own_descriptors_shift',
-        'value': 'Map::NumberOfOwnDescriptorsBits::kShift' },
+        'value': 'Map::Bits3::NumberOfOwnDescriptorsBits::kShift' },
+    { 'name': 'class_Map__instance_descriptors_offset',
+        'value': 'Map::kInstanceDescriptorsOffset' },
 
+    { 'name': 'off_fp_context_or_frame_type',
+        'value': 'CommonFrameConstants::kContextOrFrameTypeOffset'},
     { 'name': 'off_fp_context',
         'value': 'StandardFrameConstants::kContextOffset' },
     { 'name': 'off_fp_constant_pool',
         'value': 'StandardFrameConstants::kConstantPoolOffset' },
-    { 'name': 'off_fp_marker',
-        'value': 'StandardFrameConstants::kMarkerOffset' },
     { 'name': 'off_fp_function',
-        'value': 'JavaScriptFrameConstants::kFunctionOffset' },
+        'value': 'StandardFrameConstants::kFunctionOffset' },
     { 'name': 'off_fp_args',
-        'value': 'JavaScriptFrameConstants::kLastParameterOffset' },
+        'value': 'StandardFrameConstants::kFixedFrameSizeAboveFp' },
 
     { 'name': 'scopeinfo_idx_nparams',
         'value': 'ScopeInfo::kParameterCount' },
-    { 'name': 'scopeinfo_idx_nstacklocals',
-        'value': 'ScopeInfo::kStackLocalCount' },
     { 'name': 'scopeinfo_idx_ncontextlocals',
         'value': 'ScopeInfo::kContextLocalCount' },
-    { 'name': 'scopeinfo_idx_ncontextglobals',
-        'value': 'ScopeInfo::kContextGlobalCount' },
     { 'name': 'scopeinfo_idx_first_vars',
         'value': 'ScopeInfo::kVariablePartIndex' },
 
-    { 'name': 'sharedfunctioninfo_start_position_mask',
-        'value': 'SharedFunctionInfo::kStartPositionMask' },
-    { 'name': 'sharedfunctioninfo_start_position_shift',
-        'value': 'SharedFunctionInfo::kStartPositionShift' },
+    { 'name': 'jsarray_buffer_was_detached_mask',
+        'value': 'JSArrayBuffer::WasDetachedBit::kMask' },
+    { 'name': 'jsarray_buffer_was_detached_shift',
+        'value': 'JSArrayBuffer::WasDetachedBit::kShift' },
 
-    { 'name': 'jsarray_buffer_was_neutered_mask',
-        'value': 'JSArrayBuffer::WasNeutered::kMask' },
-    { 'name': 'jsarray_buffer_was_neutered_shift',
-        'value': 'JSArrayBuffer::WasNeutered::kShift' },
+    { 'name': 'context_idx_scope_info',
+        'value': 'Context::SCOPE_INFO_INDEX' },
+    { 'name': 'context_idx_prev',
+        'value': 'Context::PREVIOUS_INDEX' },
+    { 'name': 'context_min_slots',
+        'value': 'Context::MIN_CONTEXT_SLOTS' },
+    { 'name': 'native_context_embedder_data_offset',
+        'value': 'Internals::kNativeContextEmbedderDataOffset' },
+
+
+    { 'name': 'namedictionaryshape_prefix_size',
+        'value': 'NameDictionaryShape::kPrefixSize' },
+    { 'name': 'namedictionaryshape_entry_size',
+        'value': 'NameDictionaryShape::kEntrySize' },
+    { 'name': 'globaldictionaryshape_entry_size',
+        'value': 'GlobalDictionaryShape::kEntrySize' },
+
+    { 'name': 'namedictionary_prefix_start_index',
+        'value': 'NameDictionary::kPrefixStartIndex' },
+
+    { 'name': 'numberdictionaryshape_prefix_size',
+        'value': 'NumberDictionaryShape::kPrefixSize' },
+    { 'name': 'numberdictionaryshape_entry_size',
+        'value': 'NumberDictionaryShape::kEntrySize' },
+
+    { 'name': 'simplenumberdictionaryshape_prefix_size',
+        'value': 'SimpleNumberDictionaryShape::kPrefixSize' },
+    { 'name': 'simplenumberdictionaryshape_entry_size',
+        'value': 'SimpleNumberDictionaryShape::kEntrySize' },
+
+    { 'name': 'type_JSError__JS_ERROR_TYPE', 'value': 'JS_ERROR_TYPE' },
+
+    { 'name': 'class_SharedFunctionInfo__function_data__Object',
+        'value': 'SharedFunctionInfo::kFunctionDataOffset' },
 ];
 
 #
 # The following useful fields are missing accessors, so we define fake ones.
+# Please note that extra accessors should _only_ be added to expose offsets that
+# can be used to access actual V8 objects' properties. They should not be added
+# for exposing other values. For instance, enumeration values or class'
+# constants should be exposed by adding an entry in the "consts_misc" table, not
+# in this "extras_accessors" table.
 #
 extras_accessors = [
     'JSFunction, context, Context, kContextOffset',
-    'Context, closure_index, int, CLOSURE_INDEX',
-    'Context, global_object_index, int, GLOBAL_OBJECT_INDEX',
-    'Context, previous_index, int, PREVIOUS_INDEX',
-    'Context, min_context_slots, int, MIN_CONTEXT_SLOTS',
+    'JSFunction, shared, SharedFunctionInfo, kSharedFunctionInfoOffset',
     'HeapObject, map, Map, kMapOffset',
     'JSObject, elements, Object, kElementsOffset',
+    'JSObject, internal_fields, uintptr_t, kHeaderSize',
     'FixedArray, data, uintptr_t, kHeaderSize',
-    'JSArrayBuffer, backing_store, Object, kBackingStoreOffset',
-    'JSArrayBufferView, byte_offset, Object, kByteOffsetOffset',
+    'JSArrayBuffer, backing_store, uintptr_t, kBackingStoreOffset',
+    'JSArrayBuffer, byte_length, size_t, kByteLengthOffset',
+    'JSArrayBufferView, byte_length, size_t, kByteLengthOffset',
+    'JSArrayBufferView, byte_offset, size_t, kByteOffsetOffset',
+    'JSDate, value, Object, kValueOffset',
+    'JSRegExp, source, Object, kSourceOffset',
+    'JSTypedArray, external_pointer, uintptr_t, kExternalPointerOffset',
     'JSTypedArray, length, Object, kLengthOffset',
-    'Map, instance_attributes, int, kInstanceAttributesOffset',
-    'Map, inobject_properties_or_constructor_function_index, int, kInObjectPropertiesOrConstructorFunctionIndexOffset',
-    'Map, instance_size, int, kInstanceSizeOffset',
+    'Map, instance_size_in_words, char, kInstanceSizeInWordsOffset',
+    'Map, inobject_properties_start_or_constructor_function_index, char, kInObjectPropertiesStartOrConstructorFunctionIndexOffset',
+    'Map, instance_type, uint16_t, kInstanceTypeOffset',
     'Map, bit_field, char, kBitFieldOffset',
     'Map, bit_field2, char, kBitField2Offset',
     'Map, bit_field3, int, kBitField3Offset',
     'Map, prototype, Object, kPrototypeOffset',
-    'NameDictionaryShape, prefix_size, int, kPrefixSize',
-    'NameDictionaryShape, entry_size, int, kEntrySize',
-    'NameDictionary, prefix_start_index, int, kPrefixStartIndex',
-    'SeededNumberDictionaryShape, prefix_size, int, kPrefixSize',
-    'UnseededNumberDictionaryShape, prefix_size, int, kPrefixSize',
-    'NumberDictionaryShape, entry_size, int, kEntrySize',
     'Oddball, kind_offset, int, kKindOffset',
     'HeapNumber, value, double, kValueOffset',
-    'ConsString, first, String, kFirstOffset',
-    'ConsString, second, String, kSecondOffset',
     'ExternalString, resource, Object, kResourceOffset',
     'SeqOneByteString, chars, char, kHeaderSize',
     'SeqTwoByteString, chars, char, kHeaderSize',
-    'SharedFunctionInfo, code, Code, kCodeOffset',
-    'SharedFunctionInfo, scope_info, ScopeInfo, kScopeInfoOffset',
+    'UncompiledData, start_position, int32_t, kStartPositionOffset',
+    'UncompiledData, end_position, int32_t, kEndPositionOffset',
+    'SharedFunctionInfo, raw_function_token_offset, int16_t, kFunctionTokenOffsetOffset',
+    'SharedFunctionInfo, internal_formal_parameter_count, uint16_t, kFormalParameterCountOffset',
+    'SharedFunctionInfo, flags, int, kFlagsOffset',
+    'SharedFunctionInfo, length, uint16_t, kLengthOffset',
     'SlicedString, parent, String, kParentOffset',
     'Code, instruction_start, uintptr_t, kHeaderSize',
     'Code, instruction_size, int, kInstructionSizeOffset',
+    'String, length, int32_t, kLengthOffset',
+    'DescriptorArray, header_size, uintptr_t, kHeaderSize',
+    'ConsString, first, String, kFirstOffset',
+    'ConsString, second, String, kSecondOffset',
+    'SlicedString, offset, SMI, kOffsetOffset',
+    'ThinString, actual, String, kActualOffset',
+    'Symbol, name, Object, kDescriptionOffset',
+    'FixedArrayBase, length, SMI, kLengthOffset',
 ];
 
 #
@@ -232,8 +289,9 @@ extras_accessors = [
 #
 expected_classes = [
     'ConsString', 'FixedArray', 'HeapNumber', 'JSArray', 'JSFunction',
-    'JSObject', 'JSRegExp', 'JSValue', 'Map', 'Oddball', 'Script',
-    'SeqOneByteString', 'SharedFunctionInfo'
+    'JSObject', 'JSRegExp', 'JSPrimitiveWrapper', 'Map', 'Oddball', 'Script',
+    'SeqOneByteString', 'SharedFunctionInfo', 'ScopeInfo', 'JSPromise',
+    'DescriptorArray'
 ];
 
 
@@ -251,11 +309,17 @@ header = '''
  * This file is generated by %s.  Do not edit directly.
  */
 
-#include "src/v8.h"
-#include "src/frames.h"
-#include "src/frames-inl.h" /* for architecture-specific frame constants */
+#include "src/init/v8.h"
+#include "src/execution/frames.h"
+#include "src/execution/frames-inl.h" /* for architecture-specific frame constants */
+#include "src/objects/contexts.h"
+#include "src/objects/objects.h"
+#include "src/objects/data-handler.h"
+#include "src/objects/js-promise.h"
+#include "src/objects/js-regexp-string-iterator.h"
 
-using namespace v8::internal;
+namespace v8 {
+namespace internal {
 
 extern "C" {
 
@@ -270,6 +334,9 @@ STACK_FRAME_TYPE_LIST(FRAME_CONST)
 ''' % sys.argv[0];
 
 footer = '''
+}
+
+}
 }
 '''
 
@@ -288,15 +355,9 @@ def get_base_class(klass):
         return get_base_class(k['parent']);
 
 #
-# Loads class hierarchy and type information from "objects.h".
+# Loads class hierarchy and type information from "objects.h" etc.
 #
 def load_objects():
-        objfilename = sys.argv[2];
-        objfile = open(objfilename, 'r');
-        in_insttype = False;
-
-        typestr = '';
-
         #
         # Construct a dictionary for the classes we're sure should be present.
         #
@@ -304,36 +365,94 @@ def load_objects():
         for klass in expected_classes:
                 checktypes[klass] = True;
 
+
+        for filename in sys.argv[2:]:
+                if not filename.endswith("-inl.h"):
+                        load_objects_from_file(filename, checktypes)
+
+        if (len(checktypes) > 0):
+                for klass in checktypes:
+                        print('error: expected class \"%s\" not found' % klass);
+
+                sys.exit(1);
+
+
+def load_objects_from_file(objfilename, checktypes):
+        objfile = io.open(objfilename, 'r', encoding='utf-8');
+        in_insttype = False;
+        in_torque_insttype = False
+        in_torque_fulldef = False
+
+        typestr = '';
+        torque_typestr = ''
+        torque_fulldefstr = ''
+        uncommented_file = ''
+
         #
-        # Iterate objects.h line-by-line to collect type and class information.
-        # For types, we accumulate a string representing the entire InstanceType
-        # enum definition and parse it later because it's easier to do so
-        # without the embedded newlines.
+        # Iterate the header file line-by-line to collect type and class
+        # information. For types, we accumulate a string representing the entire
+        # InstanceType enum definition and parse it later because it's easier to
+        # do so without the embedded newlines.
         #
         for line in objfile:
-                if (line.startswith('enum InstanceType {')):
+                if (line.startswith('enum InstanceType : uint16_t {')):
                         in_insttype = True;
                         continue;
+
+                if (line.startswith('#define TORQUE_ASSIGNED_INSTANCE_TYPE_LIST')):
+                        in_torque_insttype = True
+                        continue
+
+                if (line.startswith('#define TORQUE_INSTANCE_CHECKERS_SINGLE_FULLY_DEFINED')):
+                        in_torque_fulldef = True
+                        continue
 
                 if (in_insttype and line.startswith('};')):
                         in_insttype = False;
                         continue;
 
-                line = re.sub('//.*', '', line.rstrip().lstrip());
+                if (in_torque_insttype and (not line or line.isspace())):
+                          in_torque_insttype = False
+                          continue
+
+                if (in_torque_fulldef and (not line or line.isspace())):
+                          in_torque_fulldef = False
+                          continue
+
+                line = re.sub('//.*', '', line.strip());
 
                 if (in_insttype):
                         typestr += line;
                         continue;
 
-                match = re.match('class (\w[^:]*)(: public (\w[^{]*))?\s*{\s*',
-                    line);
+                if (in_torque_insttype):
+                        torque_typestr += line
+                        continue
 
-                if (match):
-                        klass = match.group(1).rstrip().lstrip();
-                        pklass = match.group(3);
-                        if (pklass):
-                                pklass = pklass.rstrip().lstrip();
-                        klasses[klass] = { 'parent': pklass };
+                if (in_torque_fulldef):
+                        torque_fulldefstr += line
+                        continue
+
+                uncommented_file += '\n' + line
+
+        for match in re.finditer(r'\nclass(?:\s+V8_EXPORT(?:_PRIVATE)?)?'
+                                 r'\s+(\w[^:;]*)'
+                                 r'(?:: public (\w[^{]*))?\s*{\s*',
+                                 uncommented_file):
+                klass = match.group(1).strip();
+                pklass = match.group(2);
+                if (pklass):
+                        # Check for generated Torque class.
+                        gen_match = re.match(
+                            r'TorqueGenerated\w+\s*<\s*\w+,\s*(\w+)\s*>',
+                            pklass)
+                        if (gen_match):
+                                pklass = gen_match.group(1)
+                        # Strip potential template arguments from parent
+                        # class.
+                        match = re.match(r'(\w+)(<.*>)?', pklass.strip());
+                        pklass = match.group(1).strip();
+                klasses[klass] = { 'parent': pklass };
 
         #
         # Process the instance type declaration.
@@ -341,7 +460,21 @@ def load_objects():
         entries = typestr.split(',');
         for entry in entries:
                 types[re.sub('\s*=.*', '', entry).lstrip()] = True;
-
+        entries = torque_typestr.split('\\')
+        for entry in entries:
+                types[re.sub(r' *V\(|\) *', '', entry)] = True
+        entries = torque_fulldefstr.split('\\')
+        for entry in entries:
+                entry = entry.strip()
+                if not entry:
+                    continue
+                idx = entry.find('(');
+                rest = entry[idx + 1: len(entry) - 1];
+                args = re.split('\s*,\s*', rest);
+                typename = args[0]
+                typeconst = args[1]
+                types[typeconst] = True
+                typeclasses[typeconst] = typename
         #
         # Infer class names for each type based on a systematic transformation.
         # For example, "JS_FUNCTION_TYPE" becomes "JSFunction".  We find the
@@ -350,15 +483,7 @@ def load_objects():
         # way around.
         #
         for type in types:
-                #
-                # Symbols and Strings are implemented using the same classes.
-                #
-                usetype = re.sub('SYMBOL_', 'STRING_', type);
-
-                #
-                # REGEXP behaves like REG_EXP, as in JS_REGEXP_TYPE => JSRegExp.
-                #
-                usetype = re.sub('_REGEXP_', '_REG_EXP_', usetype);
+                usetype = type
 
                 #
                 # Remove the "_TYPE" suffix and then convert to camel case,
@@ -435,13 +560,6 @@ def load_objects():
                         if (cctype in checktypes):
                                 del checktypes[cctype];
 
-        if (len(checktypes) > 0):
-                for klass in checktypes:
-                        print('error: expected class \"%s\" not found' % klass);
-
-                sys.exit(1);
-
-
 #
 # For a given macro call, pick apart the arguments and return an object
 # describing the corresponding output constant.  See load_fields().
@@ -459,33 +577,41 @@ def parse_field(call):
 
         consts = [];
 
-        if (kind == 'ACCESSORS' or kind == 'ACCESSORS_GCSAFE'):
-                klass = args[0];
-                field = args[1];
-                dtype = args[2];
-                offset = args[3];
-
-                return ({
-                    'name': 'class_%s__%s__%s' % (klass, field, dtype),
-                    'value': '%s::%s' % (klass, offset)
-                });
-
-        assert(kind == 'SMI_ACCESSORS' or kind == 'ACCESSORS_TO_SMI');
         klass = args[0];
         field = args[1];
-        offset = args[2];
+        dtype = None
+        offset = None
+        if kind.startswith('WEAK_ACCESSORS'):
+                dtype = 'weak'
+                offset = args[2];
+        elif not (kind.startswith('SMI_ACCESSORS') or kind.startswith('ACCESSORS_TO_SMI')):
+                dtype = args[2].replace('<', '_').replace('>', '_')
+                offset = args[3];
+        else:
+                offset = args[2];
+                dtype = 'SMI'
 
+
+        assert(offset is not None and dtype is not None);
         return ({
-            'name': 'class_%s__%s__%s' % (klass, field, 'SMI'),
+            'name': 'class_%s__%s__%s' % (klass, field, dtype),
             'value': '%s::%s' % (klass, offset)
         });
 
 #
-# Load field offset information from objects-inl.h.
+# Load field offset information from objects-inl.h etc.
 #
 def load_fields():
-        inlfilename = sys.argv[3];
-        inlfile = open(inlfilename, 'r');
+        for filename in sys.argv[2:]:
+                if filename.endswith("-inl.h"):
+                        load_fields_from_file(filename)
+
+        for body in extras_accessors:
+                fields.append(parse_field('ACCESSORS(%s)' % body));
+
+
+def load_fields_from_file(filename):
+        inlfile = io.open(filename, 'r', encoding='utf-8');
 
         #
         # Each class's fields and the corresponding offsets are described in the
@@ -494,8 +620,11 @@ def load_fields():
         # may span multiple lines and may contain nested parentheses.  We also
         # call parse_field() to pick apart the invocation.
         #
-        prefixes = [ 'ACCESSORS', 'ACCESSORS_GCSAFE',
-                     'SMI_ACCESSORS', 'ACCESSORS_TO_SMI' ];
+        prefixes = [ 'ACCESSORS', 'ACCESSORS2', 'ACCESSORS_GCSAFE',
+                     'SMI_ACCESSORS', 'ACCESSORS_TO_SMI',
+                     'SYNCHRONIZED_ACCESSORS', 'WEAK_ACCESSORS' ];
+        prefixes += ([ prefix + "_CHECKED" for prefix in prefixes ] +
+                     [ prefix + "_CHECKED2" for prefix in prefixes ])
         current = '';
         opens = 0;
 
@@ -537,9 +666,6 @@ def load_fields():
                 fields.append(parse_field(current));
                 current = '';
 
-        for body in extras_accessors:
-                fields.append(parse_field('ACCESSORS(%s)' % body));
-
 #
 # Emit a block of constants.
 #
@@ -557,7 +683,7 @@ def emit_set(out, consts):
 # Emit the whole output file.
 #
 def emit_config():
-        out = file(sys.argv[1], 'w');
+        out = open(sys.argv[1], 'w');
 
         out.write(header);
 
@@ -566,9 +692,7 @@ def emit_config():
 
         out.write('/* class type information */\n');
         consts = [];
-        keys = typeclasses.keys();
-        keys.sort();
-        for typename in keys:
+        for typename in sorted(typeclasses):
                 klass = typeclasses[typename];
                 consts.append({
                     'name': 'type_%s__%s' % (klass, typename),
@@ -579,9 +703,7 @@ def emit_config():
 
         out.write('/* class hierarchy information */\n');
         consts = [];
-        keys = klasses.keys();
-        keys.sort();
-        for klassname in keys:
+        for klassname in sorted(klasses):
                 pklass = klasses[klassname]['parent'];
                 bklass = get_base_class(klassname);
                 if (bklass != 'Object'):

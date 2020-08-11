@@ -1,7 +1,6 @@
 var fs = require('fs')
 var resolve = require('path').resolve
 
-var osenv = require('osenv')
 var mkdirp = require('mkdirp')
 var rimraf = require('rimraf')
 var test = require('tap').test
@@ -11,9 +10,10 @@ var mr = require('npm-registry-mock')
 var npm = require('../../lib/npm.js')
 var common = require('../common-tap.js')
 
-var pkg = resolve(__dirname, 'git-dependency-install-link')
-var repo = resolve(__dirname, 'git-dependency-install-link-repo')
-var cache = resolve(pkg, 'cache')
+var pkg = resolve(common.pkg, 'package')
+var repo = resolve(common.pkg, 'repo')
+var prefix = resolve(common.pkg, 'prefix')
+var cache = common.cache
 
 var daemon
 var daemonPID
@@ -25,12 +25,13 @@ var EXEC_OPTS = {
   cwd: pkg,
   cache: cache
 }
+process.env.npm_config_prefix = prefix
 
 var pjParent = JSON.stringify({
   name: 'parent',
   version: '1.2.3',
   dependencies: {
-    'child': 'git://localhost:1234/child.git'
+    'child': 'git://localhost:' + common.gitPort + '/child.git'
   }
 }, null, 2) + '\n'
 
@@ -40,8 +41,8 @@ var pjChild = JSON.stringify({
 }, null, 2) + '\n'
 
 test('setup', function (t) {
-  bootstrap()
-  setup(function (er, r) {
+  t.test('bootstrap', t => bootstrap(t.end))
+  t.test('setup', t => setup(function (er, r) {
     t.ifError(er, 'git started up successfully')
 
     if (!er) {
@@ -57,13 +58,14 @@ test('setup', function (t) {
 
       t.end()
     })
-  })
+  }))
+  t.end()
 })
 
 test('install from git repo [no --link]', function (t) {
   process.chdir(pkg)
 
-  common.npm(['install', '--loglevel', 'error'], EXEC_OPTS, function (err, code, stdout, stderr) {
+  common.npm(['install'], EXEC_OPTS, function (err, code, stdout, stderr) {
     t.ifError(err, 'npm install failed')
 
     t.dissimilar(stderr, /Command failed:/, 'expect git to succeed')
@@ -82,11 +84,13 @@ test('install from git repo [with --link]', function (t) {
   process.chdir(pkg)
   rimraf.sync(resolve(pkg, 'node_modules'))
 
-  common.npm(['install', '--link', '--loglevel', 'error'], EXEC_OPTS, function (err, code, stdout, stderr) {
+  common.npm(['install', '--link'], EXEC_OPTS, function (err, code, stdout, stderr) {
     t.ifError(err, 'npm install --link failed')
+    t.equal(code, 0, 'npm install --link returned non-0 code')
 
     t.dissimilar(stderr, /Command failed:/, 'expect git to succeed')
     t.dissimilar(stderr, /version not found/, 'should not go to repository')
+    t.equal(stderr, '', 'no actual output on stderr')
 
     readJson(resolve(pkg, 'node_modules', 'child', 'package.json'), function (err, data) {
       t.ifError(err, 'error reading child package.json')
@@ -99,20 +103,20 @@ test('install from git repo [with --link]', function (t) {
 
 test('clean', function (t) {
   mockRegistry.close()
-  daemon.on('close', function () {
-    cleanup()
-    t.end()
-  })
+  daemon.on('close', t.end)
   process.kill(daemonPID)
 })
 
-function bootstrap () {
-  rimraf.sync(repo)
-  rimraf.sync(pkg)
-  mkdirp.sync(pkg)
-  mkdirp.sync(cache)
+function bootstrap (cb) {
+  rimraf(repo, () => {
+    rimraf(pkg, () => {
+      mkdirp.sync(pkg)
+      mkdirp.sync(cache)
 
-  fs.writeFileSync(resolve(pkg, 'package.json'), pjParent)
+      fs.writeFileSync(resolve(pkg, 'package.json'), pjParent)
+      cb()
+    })
+  })
 }
 
 function setup (cb) {
@@ -135,7 +139,7 @@ function setup (cb) {
           '--export-all',
           '--base-path=.',
           '--reuseaddr',
-          '--port=1234'
+          '--port=' + common.gitPort
         ],
         {
           cwd: pkg,
@@ -165,10 +169,4 @@ function setup (cb) {
       ]
     }, cb)
   })
-}
-
-function cleanup () {
-  process.chdir(osenv.tmpdir())
-  rimraf.sync(repo)
-  rimraf.sync(pkg)
 }

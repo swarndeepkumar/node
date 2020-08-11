@@ -1,8 +1,3 @@
-if (process.platform === 'win32') {
-  console.error('skipping test, because windows and shebangs')
-  process.exit(0)
-}
-
 var common = require('../common-tap.js')
 var mr = require('npm-registry-mock')
 
@@ -10,15 +5,19 @@ var test = require('tap').test
 var rimraf = require('rimraf')
 var fs = require('fs')
 var path = require('path')
-var outFile = path.join(__dirname, '/_output')
+var fakeBrowser = path.join(common.pkg, '_script.sh')
+var outFile = path.join(common.pkg, '_output')
+var opts = { cwd: common.pkg }
+var mkdirp = require('mkdirp')
 
-var opts = { cwd: __dirname }
+common.pendIfWindows('This is trickier to convert without opening new shells')
 
 test('setup', function (t) {
+  mkdirp.sync(common.pkg)
   var s = '#!/usr/bin/env bash\n' +
-          'echo \"$@\" > ' + JSON.stringify(__dirname) + '/_output\n'
-  fs.writeFileSync(__dirname + '/_script.sh', s, 'ascii')
-  fs.chmodSync(__dirname + '/_script.sh', '0755')
+          'echo "$@" > ' + JSON.stringify(common.pkg) + '/_output\n'
+  fs.writeFileSync(fakeBrowser, s, 'ascii')
+  fs.chmodSync(fakeBrowser, '0755')
   t.pass('made script')
   t.end()
 })
@@ -29,7 +28,7 @@ test('npm repo underscore', function (t) {
       'repo', 'underscore',
       '--registry=' + common.registry,
       '--loglevel=silent',
-      '--browser=' + __dirname + '/_script.sh'
+      '--browser=' + fakeBrowser
     ], opts, function (err, code, stdout, stderr) {
       t.ifError(err, 'repo command ran without error')
       t.equal(code, 0, 'exit ok')
@@ -42,13 +41,48 @@ test('npm repo underscore', function (t) {
   })
 })
 
+test('npm repo underscore --json', function (t) {
+  mr({ port: common.port }, function (er, s) {
+    common.npm([
+      'repo', 'underscore',
+      '--json',
+      '--registry=' + common.registry,
+      '--loglevel=silent',
+      '--no-browser'
+    ], opts, function (err, code, stdout, stderr) {
+      t.ifError(err, 'repo command ran without error')
+      t.equal(code, 0, 'exit ok')
+      t.matchSnapshot(stdout, 'should print json result')
+      s.close()
+      t.end()
+    })
+  })
+})
+
+test('npm repo underscore --no-browser', function (t) {
+  mr({ port: common.port }, function (er, s) {
+    common.npm([
+      'repo', 'underscore',
+      '--no-browser',
+      '--registry=' + common.registry,
+      '--loglevel=silent'
+    ], opts, function (err, code, stdout, stderr) {
+      t.ifError(err, 'repo command ran without error')
+      t.equal(code, 0, 'exit ok')
+      t.matchSnapshot(stdout, 'should print alternative msg')
+      s.close()
+      t.end()
+    })
+  })
+})
+
 test('npm repo optimist - github (https://)', function (t) {
   mr({ port: common.port }, function (er, s) {
     common.npm([
       'repo', 'optimist',
       '--registry=' + common.registry,
       '--loglevel=silent',
-      '--browser=' + __dirname + '/_script.sh'
+      '--browser=' + fakeBrowser
     ], opts, function (err, code, stdout, stderr) {
       t.ifError(err, 'repo command ran without error')
       t.equal(code, 0, 'exit ok')
@@ -67,7 +101,7 @@ test('npm repo npm-test-peer-deps - no repo', function (t) {
       'repo', 'npm-test-peer-deps',
       '--registry=' + common.registry,
       '--loglevel=silent',
-      '--browser=' + __dirname + '/_script.sh'
+      '--browser=' + fakeBrowser
     ], opts, function (err, code, stdout, stderr) {
       t.ifError(err, 'repo command ran without error')
       t.equal(code, 1, 'exit not ok')
@@ -83,7 +117,7 @@ test('npm repo test-repo-url-http - non-github (http://)', function (t) {
       'repo', 'test-repo-url-http',
       '--registry=' + common.registry,
       '--loglevel=silent',
-      '--browser=' + __dirname + '/_script.sh'
+      '--browser=' + fakeBrowser
     ], opts, function (err, code, stdout, stderr) {
       t.ifError(err, 'repo command ran without error')
       t.equal(code, 0, 'exit ok')
@@ -102,7 +136,7 @@ test('npm repo test-repo-url-https - non-github (https://)', function (t) {
       'repo', 'test-repo-url-https',
       '--registry=' + common.registry,
       '--loglevel=silent',
-      '--browser=' + __dirname + '/_script.sh'
+      '--browser=' + fakeBrowser
     ], opts, function (err, code, stdout, stderr) {
       t.ifError(err, 'repo command ran without error')
       t.equal(code, 0, 'exit ok')
@@ -121,7 +155,7 @@ test('npm repo test-repo-url-ssh - non-github (ssh://)', function (t) {
       'repo', 'test-repo-url-ssh',
       '--registry=' + common.registry,
       '--loglevel=silent',
-      '--browser=' + __dirname + '/_script.sh'
+      '--browser=' + fakeBrowser
     ], opts, function (err, code, stdout, stderr) {
       t.ifError(err, 'repo command ran without error')
       t.equal(code, 0, 'exit ok')
@@ -135,7 +169,7 @@ test('npm repo test-repo-url-ssh - non-github (ssh://)', function (t) {
 })
 
 test('cleanup', function (t) {
-  fs.unlinkSync(__dirname + '/_script.sh')
+  fs.unlinkSync(fakeBrowser)
   t.pass('cleaned up')
   t.end()
 })

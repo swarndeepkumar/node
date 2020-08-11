@@ -54,6 +54,11 @@ static void sv_send_cb(uv_udp_send_t* req, int status) {
 
 
 TEST_IMPL(udp_multicast_interface6) {
+/* TODO(gengjiawen): Fix test on QEMU. */
+#if defined(__QEMU__)
+  RETURN_SKIP("Test does not currently work in QEMU");
+#endif
+
   int r;
   uv_udp_send_t req;
   uv_buf_t buf;
@@ -72,7 +77,7 @@ TEST_IMPL(udp_multicast_interface6) {
   r = uv_udp_bind(&server, (const struct sockaddr*)&baddr, 0);
   ASSERT(r == 0);
 
-#if defined(__APPLE__) || defined(__FreeBSD__)
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__FreeBSD_kernel__)
   r = uv_udp_set_multicast_interface(&server, "::1%lo0");
 #else
   r = uv_udp_set_multicast_interface(&server, NULL);

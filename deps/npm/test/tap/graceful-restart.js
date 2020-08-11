@@ -1,14 +1,8 @@
 var fs = require('fs')
 var resolve = require('path').resolve
-
-var osenv = require('osenv')
-var mkdirp = require('mkdirp')
-var rimraf = require('rimraf')
 var test = require('tap').test
-
 var common = require('../common-tap.js')
-
-var pkg = resolve(__dirname, 'graceful-restart')
+var pkg = common.pkg
 
 var outGraceless = [
   'prerestart',
@@ -60,17 +54,12 @@ var pjGraceful = JSON.stringify({
   }
 }, null, 2) + '\n'
 
-test('setup', function (t) {
-  bootstrap()
-  t.end()
-})
-
 test('graceless restart', function (t) {
   fs.writeFileSync(resolve(pkg, 'package.json'), pjGraceless)
   createChild(['run-script', 'restart'], function (err, code, out) {
     t.ifError(err, 'restart finished successfully')
     t.equal(code, 0, 'npm run-script exited with code')
-    t.equal(out, outGraceless, 'expected all scripts to run')
+    t.equal(out.replace(/\r/g, ''), outGraceless, 'expected all scripts to run')
     t.end()
   })
 })
@@ -80,24 +69,10 @@ test('graceful restart', function (t) {
   createChild(['run-script', 'restart'], function (err, code, out) {
     t.ifError(err, 'restart finished successfully')
     t.equal(code, 0, 'npm run-script exited with code')
-    t.equal(out, outGraceful, 'expected only *restart scripts to run')
+    t.equal(out.replace(/\r/g, ''), outGraceful, 'expected only *restart scripts to run')
     t.end()
   })
 })
-
-test('clean', function (t) {
-  cleanup()
-  t.end()
-})
-
-function bootstrap () {
-  mkdirp.sync(pkg)
-}
-
-function cleanup () {
-  process.chdir(osenv.tmpdir())
-  rimraf.sync(pkg)
-}
 
 function createChild (args, cb) {
   var env = {

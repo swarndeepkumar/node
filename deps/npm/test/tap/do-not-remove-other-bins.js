@@ -3,13 +3,11 @@ var fs = require('fs')
 var path = require('path')
 
 var mkdirp = require('mkdirp')
-var osenv = require('osenv')
-var rimraf = require('rimraf')
 var test = require('tap').test
 
 var common = require('../common-tap')
 
-var base = path.resolve(__dirname, path.basename(__filename, '.js'))
+var base = common.pkg
 var installPath = path.resolve(base, 'install')
 var installBin = path.resolve(installPath, 'node_modules', '.bin')
 var packageApath = path.resolve(base, 'packageA')
@@ -41,7 +39,6 @@ var EXEC_OPTS = {
 }
 
 test('setup', function (t) {
-  cleanup()
   mkdirp.sync(path.join(installPath, 'node_modules'))
   mkdirp.sync(packageApath)
   fs.writeFileSync(
@@ -93,7 +90,7 @@ test('verify bins', function (t) {
   var bin = path.dirname(
     path.resolve(
       installBin,
-      fs.readlinkSync(path.join(installBin, 'testbin'))))
+      common.readBinLink(path.join(installBin, 'testbin'))))
   t.is(bin, path.join(installPath, 'node_modules', 'b'))
   t.end()
 })
@@ -114,18 +111,7 @@ test('verify postremoval bins', function (t) {
   var bin = path.dirname(
     path.resolve(
       installBin,
-      fs.readlinkSync(path.join(installBin, 'testbin'))))
+      common.readBinLink(path.join(installBin, 'testbin'))))
   t.is(bin, path.join(installPath, 'node_modules', 'b'))
   t.end()
 })
-
-test('cleanup', function (t) {
-  cleanup()
-  t.pass('cleaned up')
-  t.end()
-})
-
-function cleanup () {
-  process.chdir(osenv.tmpdir())
-  rimraf.sync(base)
-}

@@ -5,16 +5,15 @@
 #ifndef V8_REGEXP_ARM64_REGEXP_MACRO_ASSEMBLER_ARM64_H_
 #define V8_REGEXP_ARM64_REGEXP_MACRO_ASSEMBLER_ARM64_H_
 
-#include "src/arm64/assembler-arm64.h"
-#include "src/macro-assembler.h"
+#include "src/codegen/arm64/assembler-arm64.h"
+#include "src/codegen/macro-assembler.h"
 #include "src/regexp/regexp-macro-assembler.h"
 
 namespace v8 {
 namespace internal {
 
-
-#ifndef V8_INTERPRETED_REGEXP
-class RegExpMacroAssemblerARM64: public NativeRegExpMacroAssembler {
+class V8_EXPORT_PRIVATE RegExpMacroAssemblerARM64
+    : public NativeRegExpMacroAssembler {
  public:
   RegExpMacroAssemblerARM64(Isolate* isolate, Zone* zone, Mode mode,
                             int registers_to_save);
@@ -25,7 +24,7 @@ class RegExpMacroAssemblerARM64: public NativeRegExpMacroAssembler {
   virtual void AdvanceRegister(int reg, int by);
   virtual void Backtrack();
   virtual void Bind(Label* label);
-  virtual void CheckAtStart(Label* on_at_start);
+  virtual void CheckAtStart(int cp_offset, Label* on_at_start);
   virtual void CheckCharacter(unsigned c, Label* on_equal);
   virtual void CheckCharacterAfterAnd(unsigned c,
                                       unsigned mask,
@@ -39,9 +38,11 @@ class RegExpMacroAssemblerARM64: public NativeRegExpMacroAssembler {
   // A "greedy loop" is a loop that is both greedy and with a simple
   // body. It has a particularly simple implementation.
   virtual void CheckGreedyLoop(Label* on_tos_equals_current_position);
-  virtual void CheckNotAtStart(Label* on_not_at_start);
-  virtual void CheckNotBackReference(int start_reg, Label* on_no_match);
+  virtual void CheckNotAtStart(int cp_offset, Label* on_not_at_start);
+  virtual void CheckNotBackReference(int start_reg, bool read_backward,
+                                     Label* on_no_match);
   virtual void CheckNotBackReferenceIgnoreCase(int start_reg,
+                                               bool read_backward,
                                                Label* on_no_match);
   virtual void CheckNotCharacter(unsigned c, Label* on_not_equal);
   virtual void CheckNotCharacterAfterAnd(unsigned c,
@@ -64,6 +65,7 @@ class RegExpMacroAssemblerARM64: public NativeRegExpMacroAssembler {
   virtual void CheckPosition(int cp_offset, Label* on_outside_input);
   virtual bool CheckSpecialCharacterClass(uc16 type,
                                           Label* on_no_match);
+  virtual void BindJumpTarget(Label* label = nullptr);
   virtual void Fail();
   virtual Handle<HeapObject> GetCode(Handle<String> source);
   virtual void GoTo(Label* label);
@@ -71,10 +73,8 @@ class RegExpMacroAssemblerARM64: public NativeRegExpMacroAssembler {
   virtual void IfRegisterLT(int reg, int comparand, Label* if_lt);
   virtual void IfRegisterEqPos(int reg, Label* if_eq);
   virtual IrregexpImplementation Implementation();
-  virtual void LoadCurrentCharacter(int cp_offset,
-                                    Label* on_end_of_input,
-                                    bool check_bounds = true,
-                                    int characters = 1);
+  virtual void LoadCurrentCharacterUnchecked(int cp_offset,
+                                             int character_count);
   virtual void PopCurrentPosition();
   virtual void PopRegister(int register_index);
   virtual void PushBacktrack(Label* label);
@@ -89,15 +89,13 @@ class RegExpMacroAssemblerARM64: public NativeRegExpMacroAssembler {
   virtual void WriteCurrentPositionToRegister(int reg, int cp_offset);
   virtual void ClearRegisters(int reg_from, int reg_to);
   virtual void WriteStackPointerToRegister(int reg);
-  virtual bool CanReadUnaligned();
 
   // Called from RegExp if the stack-guard is triggered.
   // If the code object is relocated, the return address is fixed before
   // returning.
-  static int CheckStackGuardState(Address* return_address,
-                                  Code* re_code,
-                                  Address re_frame,
-                                  int start_offset,
+  // {raw_code} is an Address because this is called via ExternalReference.
+  static int CheckStackGuardState(Address* return_address, Address raw_code,
+                                  Address re_frame, int start_offset,
                                   const byte** input_start,
                                   const byte** input_end);
 
@@ -107,28 +105,29 @@ class RegExpMacroAssemblerARM64: public NativeRegExpMacroAssembler {
   static const int kCalleeSavedRegisters = 0;
   // Return address.
   // It is placed above the 11 callee-saved registers.
-  static const int kReturnAddress = kCalleeSavedRegisters + 11 * kPointerSize;
-  static const int kSecondaryReturnAddress = kReturnAddress + kPointerSize;
+  static const int kReturnAddress =
+      kCalleeSavedRegisters + 11 * kSystemPointerSize;
   // Stack parameter placed by caller.
-  static const int kIsolate = kSecondaryReturnAddress + kPointerSize;
+  static const int kIsolate = kReturnAddress + kSystemPointerSize;
 
   // Below the frame pointer.
   // Register parameters stored by setup code.
-  static const int kDirectCall = kCalleeSavedRegisters - kPointerSize;
-  static const int kStackBase = kDirectCall - kPointerSize;
-  static const int kOutputSize = kStackBase - kPointerSize;
-  static const int kInput = kOutputSize - kPointerSize;
+  static const int kDirectCall = kCalleeSavedRegisters - kSystemPointerSize;
+  static const int kStackBase = kDirectCall - kSystemPointerSize;
+  static const int kOutputSize = kStackBase - kSystemPointerSize;
+  static const int kInput = kOutputSize - kSystemPointerSize;
   // When adding local variables remember to push space for them in
   // the frame in GetCode.
-  static const int kSuccessCounter = kInput - kPointerSize;
+  static const int kSuccessCounter = kInput - kSystemPointerSize;
+  static const int kBacktrackCount = kSuccessCounter - kSystemPointerSize;
   // First position register address on the stack. Following positions are
   // below it. A position is a 32 bit value.
-  static const int kFirstRegisterOnStack = kSuccessCounter - kWRegSize;
+  static const int kFirstRegisterOnStack = kBacktrackCount - kWRegSize;
   // A capture is a 64 bit value holding two position.
-  static const int kFirstCaptureOnStack = kSuccessCounter - kXRegSize;
+  static const int kFirstCaptureOnStack = kBacktrackCount - kXRegSize;
 
   // Initial size of code buffer.
-  static const size_t kRegExpCodeSize = 1024;
+  static const int kRegExpCodeSize = 1024;
 
   // When initializing registers to a non-position value we can unroll
   // the loop. Set the limit of registers to unroll.
@@ -138,10 +137,6 @@ class RegExpMacroAssemblerARM64: public NativeRegExpMacroAssembler {
   // contain one capture, that is two 32 bit registers. We can cache at most
   // 16 registers.
   static const int kNumCachedRegisters = 16;
-
-  // Load a number of characters at the given offset from the
-  // current position, into the current-character register.
-  void LoadCurrentCharacterUnchecked(int cp_offset, int character_count);
 
   // Check whether preemption has been requested.
   void CheckPreemption();
@@ -190,7 +185,7 @@ class RegExpMacroAssemblerARM64: public NativeRegExpMacroAssembler {
   Register code_pointer() { return x20; }
 
   // Register holding the value used for clearing capture registers.
-  Register non_position_value() { return w24; }
+  Register string_start_minus_one() { return w24; }
   // The top 32 bit of this register is used to store this value
   // twice. This is used for clearing more than one register at a time.
   Register twice_non_position_value() { return x24; }
@@ -199,7 +194,7 @@ class RegExpMacroAssemblerARM64: public NativeRegExpMacroAssembler {
   int char_size() { return static_cast<int>(mode_); }
 
   // Equivalent to a conditional branch to the label, unless the label
-  // is NULL, in which case it is a conditional Backtrack.
+  // is nullptr, in which case it is a conditional Backtrack.
   void BranchOrBacktrack(Condition condition, Label* to);
 
   // Compares reg against immmediate before calling BranchOrBacktrack.
@@ -232,7 +227,7 @@ class RegExpMacroAssemblerARM64: public NativeRegExpMacroAssembler {
   };
 
   RegisterState GetRegisterState(int register_index) {
-    DCHECK(register_index >= 0);
+    DCHECK_LE(0, register_index);
     if (register_index >= kNumCachedRegisters) {
       return STACKED;
     } else {
@@ -285,9 +280,6 @@ class RegExpMacroAssemblerARM64: public NativeRegExpMacroAssembler {
   Label check_preempt_label_;
   Label stack_overflow_label_;
 };
-
-#endif  // V8_INTERPRETED_REGEXP
-
 
 }  // namespace internal
 }  // namespace v8

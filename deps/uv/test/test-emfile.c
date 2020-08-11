@@ -43,6 +43,13 @@ TEST_IMPL(emfile) {
   uv_connect_t connect_req;
   uv_loop_t* loop;
   int first_fd;
+#if defined(_AIX) || defined(__MVS__)
+  /* On AIX, if a 'accept' call fails ECONNRESET is set on the socket
+   * which causes uv__emfile_trick to not work as intended and this test
+   * to fail.
+   */
+  RETURN_SKIP("uv__emfile_trick does not work on this OS");
+#endif
 
   /* Lower the file descriptor limit and use up all fds save one. */
   limits.rlim_cur = limits.rlim_max = maxfd + 1;
@@ -107,4 +114,8 @@ static void connect_cb(uv_connect_t* req, int status) {
   uv_close((uv_handle_t*) &client_handle, NULL);
 }
 
-#endif  /* !defined(_WIN32) */
+#else
+
+typedef int file_has_no_tests; /* ISO C forbids an empty translation unit. */
+
+#endif /* !_WIN32 */

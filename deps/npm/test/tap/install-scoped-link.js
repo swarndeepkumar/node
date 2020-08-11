@@ -4,19 +4,20 @@ var path = require('path')
 var existsSync = fs.existsSync || path.existsSync
 
 var mkdirp = require('mkdirp')
-var osenv = require('osenv')
-var rimraf = require('rimraf')
 var test = require('tap').test
+
+var escapeExecPath = require('../../lib/utils/escape-exec-path')
 
 var common = require('../common-tap.js')
 
-var pkg = path.join(__dirname, 'install-scoped-link')
-var work = path.join(__dirname, 'install-scoped-link-TEST')
+var resolve = require('path').resolve
+var pkg = resolve(common.pkg, 'package')
+var work = resolve(common.pkg, 'TEST')
 var modules = path.join(work, 'node_modules')
 
 var EXEC_OPTS = { cwd: work }
 
-var world = 'console.log("hello blrbld")\n'
+var world = '#!/usr/bin/env node\nconsole.log("hello blrbld")\n'
 
 var json = {
   name: '@scoped/package',
@@ -27,7 +28,6 @@ var json = {
 }
 
 test('setup', function (t) {
-  cleanup()
   mkdirp.sync(pkg)
   fs.writeFileSync(
     path.join(pkg, 'package.json'),
@@ -61,7 +61,7 @@ test('installing package with links', function (t) {
       var hello = path.join(modules, '.bin', 'hello')
       t.ok(existsSync(hello), 'binary link exists')
 
-      exec('node ' + hello, function (err, stdout, stderr) {
+      exec(escapeExecPath(hello), function (err, stdout, stderr) {
         t.ifError(err, 'command ran fine')
         t.notOk(stderr, 'got no error output back')
         t.equal(stdout, 'hello blrbld\n', 'output was as expected')
@@ -71,14 +71,3 @@ test('installing package with links', function (t) {
     }
   )
 })
-
-test('cleanup', function (t) {
-  cleanup()
-  t.end()
-})
-
-function cleanup () {
-  process.chdir(osenv.tmpdir())
-  rimraf.sync(work)
-  rimraf.sync(pkg)
-}

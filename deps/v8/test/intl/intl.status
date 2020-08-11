@@ -27,36 +27,45 @@
 
 [
 [ALWAYS, {
-  # The following tests use getDefaultTimeZone().
-  'date-format/resolved-options': [FAIL],
-  'date-format/timezone': [FAIL],
-  'general/v8Intl-exists': [FAIL],
-
-  # TODO(jochen): The following test is flaky.
+# TODO(jochen): The following test is flaky.
   'overrides/caching': [PASS, FAIL],
 
-  # BUG(v8:3454).
-  'date-format/parse-MMMdy': [FAIL],
-  'date-format/parse-mdyhms': [FAIL],
-  'number-format/parse-decimal': [FAIL],
-  'number-format/parse-percent': [FAIL],
+  # https://code.google.com/p/v8/issues/detail?id=7481
+  'collator/check-kf-option': [FAIL],
+  'collator/check-kn-option': [FAIL],
 }],  # ALWAYS
 
-##############################################################################
-['system == linux', {
-  # BUG(v8:2899).
-  'collator/default-locale': [PASS, FAIL],
-}],  # 'system == linux'
+['variant == no_wasm_traps', {
+  '*': [SKIP],
+}],  # variant == no_wasm_traps
 
-##############################################################################
-['system == macos', {
-  # BUG(v8:4459).
-  'collator/default-locale': [FAIL],
-}],  # 'system == macos'
+['system == windows', {
+  # noi18n cannot turn on ICU backend for Date
+  'relative-time-format/default-locale-fr-CA': [SKIP],
+  'relative-time-format/default-locale-pt-BR': [SKIP],
 
-##############################################################################
-['arch == arm or arch == arm64', {
-  # BUG(v8:4459).
-  'collator/default-locale': [PASS, FAIL],
-}],  # 'arch == arm or arch == arm64'
+  # Unable to change locale on Windows:
+  'default_locale': [SKIP],
+
+  # Unable to change locale and TZ on Windows:
+  'regress-7770': [SKIP],
+}],  # system == windows'
+
+['system == android', {
+  # Android's ICU data file does not have the Chinese/Japanese dictionary
+  # required for the test to pass.
+  'break-iterator/zh-break': [SKIP],
+  # Unable to change locale on Android:
+  'relative-time-format/default-locale-fr-CA': [SKIP],
+  'relative-time-format/default-locale-pt-BR': [SKIP],
+  'default_locale': [SKIP],
+  # Unable to change locale and TZ on Android:
+  'regress-7770': [SKIP],
+}],  # 'system == android'
+
+################################################################################
+['variant == stress_snapshot', {
+  '*': [SKIP],  # only relevant for mjsunit tests.
+}],
+
 ]

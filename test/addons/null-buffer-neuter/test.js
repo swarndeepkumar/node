@@ -1,7 +1,11 @@
 'use strict';
 // Flags: --expose-gc
-
-require('../../common');
-var binding = require('./build/Release/binding');
+const common = require('../../common');
+const assert = require('assert');
+const binding = require(`./build/${common.buildType}/binding`);
 
 binding.run();
+global.gc();
+setImmediate(() => {
+  assert.strictEqual(binding.isAlive(), 0);
+});

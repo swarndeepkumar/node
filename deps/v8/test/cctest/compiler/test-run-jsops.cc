@@ -2,9 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// TODO(jochen): Remove this after the setting is turned on globally.
-#define V8_IMMINENT_DEPRECATION_WARNINGS
-
+#include "src/objects/objects-inl.h"
 #include "test/cctest/compiler/function-tester.h"
 
 namespace v8 {
@@ -106,7 +104,7 @@ TEST(BinopShiftRightLogical) {
   FunctionTester T("(function(a,b) { return a >>> b; })");
 
   T.CheckCall(4, 8, 1);
-  T.CheckCall(0x7ffffffc, -8, 1);
+  T.CheckCall(0x7FFFFFFC, -8, 1);
   T.CheckCall(T.Val(4), T.Val("8"), T.Val(1));
   T.CheckCall(T.Val(4), T.Val(8), T.Val("1"));
 }
@@ -397,16 +395,6 @@ TEST(GlobalLoad) {
 }
 
 
-TEST(GlobalStoreSloppy) {
-  FunctionTester T("(function(a,b) { g = a + b; return g; })");
-
-  T.CheckCall(T.Val(33), T.Val(22), T.Val(11));
-  CompileRun("delete g");
-  CompileRun("const g = 23");
-  T.CheckCall(T.Val(23), T.Val(55), T.Val(44));
-}
-
-
 TEST(GlobalStoreStrict) {
   FunctionTester T("(function(a,b) { 'use strict'; g = a + b; return g; })");
 
@@ -525,7 +513,6 @@ TEST(RegExpLiteral) {
 
 
 TEST(ClassLiteral) {
-  FLAG_harmony_sloppy = true;
   const char* src =
       "(function(a,b) {"
       "  class C {"

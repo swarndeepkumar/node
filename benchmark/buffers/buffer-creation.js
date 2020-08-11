@@ -1,19 +1,44 @@
-SlowBuffer = require('buffer').SlowBuffer;
+'use strict';
 
-var common = require('../common.js');
-var bench = common.createBenchmark(main, {
-  type: ['fast', 'slow'],
-  len: [10, 1024],
-  n: [1024]
+const common = require('../common.js');
+const assert = require('assert');
+const bench = common.createBenchmark(main, {
+  type: [
+    'fast-alloc',
+    'fast-alloc-fill',
+    'fast-allocUnsafe',
+    'slow-allocUnsafe',
+  ],
+  len: [10, 1024, 4096, 8192],
+  n: [6e5]
 });
 
-function main(conf) {
-  var len = +conf.len;
-  var n = +conf.n;
-  var clazz = conf.type === 'fast' ? Buffer : SlowBuffer;
+function main({ len, n, type }) {
+  let fn, i;
+  switch (type) {
+    case 'fast-alloc':
+      fn = Buffer.alloc;
+      break;
+    case 'fast-alloc-fill':
+      bench.start();
+      for (i = 0; i < n; i++) {
+        Buffer.alloc(len, 0);
+      }
+      bench.end(n);
+      return;
+    case 'fast-allocUnsafe':
+      fn = Buffer.allocUnsafe;
+      break;
+    case 'slow-allocUnsafe':
+      fn = Buffer.allocUnsafeSlow;
+      break;
+    default:
+      assert.fail('Should not get here');
+  }
+
   bench.start();
-  for (var i = 0; i < n * 1024; i++) {
-    b = new clazz(len);
+  for (i = 0; i < n; i++) {
+    fn(len);
   }
   bench.end(n);
 }

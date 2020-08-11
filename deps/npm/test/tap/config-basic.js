@@ -1,17 +1,13 @@
 var test = require('tap').test
+var common = require('../common-config.js')
 var npmconf = require('../../lib/config/core.js')
-var common = require('./00-config-setup.js')
 var path = require('path')
 
 var projectData = {
-  'save-prefix': '~',
-  'proprietary-attribs': false,
-  'legacy-bundling': true
 }
 
 var ucData = common.ucData
 var envData = common.envData
-var envDataFix = common.envDataFix
 
 var gcData = { 'package-config:foo': 'boo' }
 
@@ -19,9 +15,17 @@ var biData = {}
 
 var cli = { foo: 'bar', umask: parseInt('022', 8) }
 
+var expectNames = [
+  'cli',
+  'envData',
+  'projectData',
+  'ucData',
+  'gcData',
+  'biData'
+]
 var expectList = [
   cli,
-  envDataFix,
+  envData,
   projectData,
   ucData,
   gcData,
@@ -31,7 +35,7 @@ var expectList = [
 var expectSources = {
   cli: { data: cli },
   env: {
-    data: envDataFix,
+    data: envData,
     source: envData,
     prefix: ''
   },
@@ -53,17 +57,23 @@ var expectSources = {
   builtin: { data: biData }
 }
 
+function isDeeplyDetails (t, aa, bb, msg, seen) {
+  return t.same(aa, bb, msg)
+}
+
 test('no builtin', function (t) {
   t.comment(process.env)
   npmconf.load(cli, function (er, conf) {
     if (er) throw er
-    t.same(conf.list, expectList, 'config properties in list format match expected')
-    t.same(conf.sources, expectSources, 'config by source matches expected')
+    expectNames.forEach(function (name, ii) {
+      isDeeplyDetails(t, conf.list[ii], expectList[ii], 'config properties list: ' + name)
+    })
+    isDeeplyDetails(t, conf.sources, expectSources, 'config by source')
     t.same(npmconf.rootConf.list, [], 'root configuration is empty')
-    t.equal(npmconf.rootConf.root, npmconf.defs.defaults, 'defaults match up')
-    t.equal(conf.root, npmconf.defs.defaults, 'current root config matches defaults')
-    t.equal(conf.get('umask'), parseInt('022', 8), 'umask is as expected')
-    t.equal(conf.get('heading'), 'npm', 'config name is as expected')
+    isDeeplyDetails(t, npmconf.rootConf.root, npmconf.defs.defaults, 'defaults')
+    isDeeplyDetails(t, conf.root, npmconf.defs.defaults, 'current root config is defaults')
+    t.is(conf.get('umask'), parseInt('022', 8), 'umask is as expected')
+    t.is(conf.get('heading'), 'npm', 'config name is as expected')
     t.end()
   })
 })

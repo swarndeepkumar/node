@@ -2,11 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "src/bit-vector.h"
 #include "src/compiler/control-equivalence.h"
+#include "src/compiler/compiler-source-position-table.h"
 #include "src/compiler/graph-visualizer.h"
+#include "src/compiler/node-origin-table.h"
 #include "src/compiler/node-properties.h"
-#include "src/zone-containers.h"
+#include "src/utils/bit-vector.h"
+#include "src/zone/zone-containers.h"
 #include "test/unittests/compiler/graph-unittest.h"
 
 namespace v8 {
@@ -29,8 +31,9 @@ class ControlEquivalenceTest : public GraphTest {
   void ComputeEquivalence(Node* node) {
     graph()->SetEnd(graph()->NewNode(common()->End(1), node));
     if (FLAG_trace_turbo) {
-      OFStream os(stdout);
-      os << AsDOT(*graph());
+      SourcePositionTable table(graph());
+      NodeOriginTable table2(graph());
+      StdoutStream{} << AsJSON(*graph(), &table, &table2);
     }
     ControlEquivalence equivalence(zone(), graph());
     equivalence.Run(node);

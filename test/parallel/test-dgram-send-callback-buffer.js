@@ -6,16 +6,15 @@ const dgram = require('dgram');
 
 const client = dgram.createSocket('udp4');
 
-const buf = new Buffer(256);
+const buf = Buffer.allocUnsafe(256);
 
 const onMessage = common.mustCall(function(err, bytes) {
-  assert.equal(bytes, buf.length);
-  clearTimeout(timer);
+  assert.ifError(err);
+  assert.strictEqual(bytes, buf.length);
   client.close();
 });
 
-const timer = setTimeout(function() {
-  throw new Error('Timeout');
-}, common.platformTimeout(200));
-
-client.send(buf, common.PORT, common.localhostIPv4, onMessage);
+client.bind(0, () => client.send(buf,
+                                 client.address().port,
+                                 common.localhostIPv4,
+                                 onMessage));
